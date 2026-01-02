@@ -10,10 +10,12 @@
 //! We expose the same computation via [`Config::baud_divisor`].
 
 use core::marker::PhantomData;
+use core::{error, fmt};
 
 use dp32g030 as pac;
 
 use embedded_hal_nb::serial;
+use embedded_io as eio;
 
 use crate::dp30g030_hal::gpio::Port;
 
@@ -109,6 +111,21 @@ pub enum Error {
     BadConfig,
 }
 
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Error::Overrun => "UART overrun",
+            Error::Parity => "UART parity error",
+            Error::Frame => "UART framing error",
+            Error::RxTimeout => "UART RX timeout",
+            Error::BadConfig => "UART bad configuration",
+        };
+        f.write_str(s)
+    }
+}
+
+impl error::Error for Error {}
+
 impl serial::Error for Error {
     #[inline]
     fn kind(&self) -> serial::ErrorKind {
@@ -117,6 +134,17 @@ impl serial::Error for Error {
             Error::Parity => serial::ErrorKind::Parity,
             Error::Frame => serial::ErrorKind::FrameFormat,
             Error::RxTimeout | Error::BadConfig => serial::ErrorKind::Other,
+        }
+    }
+}
+
+impl eio::Error for Error {
+    #[inline]
+    fn kind(&self) -> eio::ErrorKind {
+        match self {
+            Error::RxTimeout => eio::ErrorKind::TimedOut,
+            Error::BadConfig => eio::ErrorKind::InvalidInput,
+            Error::Overrun | Error::Parity | Error::Frame => eio::ErrorKind::Other,
         }
     }
 }
@@ -597,6 +625,10 @@ macro_rules! impl_uart {
             type Error = Error;
         }
 
+        impl<TX, RX> eio::ErrorType for Uart<$UART, TX, RX> {
+            type Error = Error;
+        }
+
         impl<TX, RX> serial::Read<u8> for Uart<$UART, TX, RX> {
             fn read(&mut self) -> nb::Result<u8, Self::Error> {
                 let regs = <$UART as Instance>::regs();
@@ -651,6 +683,19 @@ macro_rules! impl_uart {
                 } else {
                     Ok(())
                 }
+            }
+        }
+
+        impl<TX, RX> eio::Write for Uart<$UART, TX, RX> {
+            fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+                for &b in buf {
+                    nb::block!(<Self as serial::Write<u8>>::write(self, b))?;
+                }
+                Ok(buf.len())
+            }
+
+            fn flush(&mut self) -> Result<(), Self::Error> {
+                nb::block!(<Self as serial::Write<u8>>::flush(self))
             }
         }
     };

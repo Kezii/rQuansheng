@@ -1,6 +1,10 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-# TODO(2) replace `$CHIP` with your chip's name (see `probe-rs chip list` output)
-#runner = "probe-rs run --chip $CHIP"
+# Custom runner:
+# - builds (Cargo does this), then:
+# - converts the produced ELF -> firmware.bin
+# - flashes via tools/k5prog
+# - reads UART and decodes defmt frames via defmt-print
+runner = "bash tools/cargo-runner.sh"
 rustflags = [
   "-C", "linker=flip-link",
   "-C", "link-arg=-Tlink.x",

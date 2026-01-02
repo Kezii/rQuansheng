@@ -1,4 +1,5 @@
 pub mod gpio;
+pub mod i2c;
 pub mod uart;
 
 use dp32g030 as _;
