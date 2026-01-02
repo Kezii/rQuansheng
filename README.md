@@ -5,9 +5,9 @@ This is an highly experimental from-scratch reimplementation for a firmware for 
 This is not a black box reimplementation, I'm still using the C code as reference, but the point is to move away from that, especially on the UI 
 
 
-# roadmap
+# Roadmap
 
-## framework
+## Basics
 - [x] run a binary
 - [x] run RTIC
 - [x] gpio driver
@@ -18,9 +18,11 @@ This is not a black box reimplementation, I'm still using the C code as referenc
 - [ ] display driver
 - [ ] eeprom driver 
 
-## usage
+## High level
 - [x] fm radio rx
 - [x] fm radio tx
 - [ ] serial protocol for debug logs and remote control
-- [ ] basic UI
+- [ ] basic UI for radio state
 - [ ] eeprom settings save
+- [ ] basic ui for menu
+- [ ] other modes
