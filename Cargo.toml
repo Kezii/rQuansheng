@@ -1,6 +1,6 @@
 [package]
 # TODO fix `authors` and `name` if you didn't use `cargo-generate`
-name = "rquangsheng"
+name = "rquansheng"
 edition = "2021"
 version = "0.1.0"
 

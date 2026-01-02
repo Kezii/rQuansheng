@@ -2,7 +2,7 @@
 #![no_std]
 #![feature(type_alias_impl_trait)]
 
-use rquangsheng::{self as _, dp30g030_hal}; // global logger + panicking-behavior + memory layout
+use rquansheng::{self as _, dp30g030_hal}; // global logger + panicking-behavior + memory layout
 
 use rtic_monotonics::systick::prelude::*;
 use st7565::{
@@ -42,7 +42,7 @@ impl DisplaySpecs<128, 64, 8> for FG12864390_FKFW {
 
 // TODO(7) Configure the `rtic::app` macro
 #[rtic::app(
-    device = rquangsheng::dp30g030_hal,
+    device = rquansheng::dp30g030_hal,
     // TODO: Replace the `FreeInterrupt1, ...` with free interrupt vectors if software tasks are used
     // You can usually find the names of the interrupt vectors in the some_hal::pac::interrupt enum.
     dispatchers = [IWDT]
@@ -65,14 +65,14 @@ mod app {
     use embedded_hal::delay::DelayNs;
     use embedded_hal::digital::{InputPin, OutputPin};
     use embedded_hal_bus::spi::ExclusiveDevice;
-    use rquangsheng::bk4819::Bk4819Driver;
-    use rquangsheng::bk4819_bitbang::{Bk4819, Bk4819BitBang, Dp32g030BidiPin};
-    use rquangsheng::dp30g030_hal::adc;
-    use rquangsheng::dp30g030_hal::gpio::{Input, Output, Pin, Port};
-    use rquangsheng::dp30g030_hal::spi;
-    use rquangsheng::dp30g030_hal::uart;
-    use rquangsheng::keyboard::KeyboardState;
-    use rquangsheng::radio::{Config as RadioConfig, RadioController};
+    use rquansheng::bk4819::Bk4819Driver;
+    use rquansheng::bk4819_bitbang::{Bk4819, Bk4819BitBang, Dp32g030BidiPin};
+    use rquansheng::dp30g030_hal::adc;
+    use rquansheng::dp30g030_hal::gpio::{Input, Output, Pin, Port};
+    use rquansheng::dp30g030_hal::spi;
+    use rquansheng::dp30g030_hal::uart;
+    use rquansheng::keyboard::KeyboardState;
+    use rquansheng::radio::{Config as RadioConfig, RadioController};
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
     use st7565::{GraphicsPageBuffer, ST7565};
     use static_cell::StaticCell;
@@ -190,14 +190,14 @@ mod app {
 
         // UART example: UART1 on PA7 (TX) / PA8 (RX), 38400-8N1.
         let uart1_tx =
-            uart::TxPin::<rquangsheng::dp30g030_hal::UART1>::new(Pin::new(Port::A, 7)).unwrap();
+            uart::TxPin::<rquansheng::dp30g030_hal::UART1>::new(Pin::new(Port::A, 7)).unwrap();
         let uart1_rx =
-            uart::RxPin::<rquangsheng::dp30g030_hal::UART1>::new(Pin::new(Port::A, 8)).unwrap();
+            uart::RxPin::<rquansheng::dp30g030_hal::UART1>::new(Pin::new(Port::A, 8)).unwrap();
         let uart1_cfg = uart::Config::new(48_000_000, 38_400);
         let uart1: uart::Uart1 = uart::Uart::<
-            rquangsheng::dp30g030_hal::UART1,
-            uart::TxPin<rquangsheng::dp30g030_hal::UART1>,
-            uart::RxPin<rquangsheng::dp30g030_hal::UART1>,
+            rquansheng::dp30g030_hal::UART1,
+            uart::TxPin<rquansheng::dp30g030_hal::UART1>,
+            uart::RxPin<rquansheng::dp30g030_hal::UART1>,
         >::new(
             cx.device.UART1,
             &cx.device.SYSCON,
@@ -235,14 +235,14 @@ mod app {
         // - A0/DC: PB9
         // - RST:  PB11 (shared with SWDIO in stock firmware)
         let spi0_sck =
-            spi::SckPin::<rquangsheng::dp30g030_hal::SPI0>::new(Pin::new(Port::B, 8)).unwrap();
+            spi::SckPin::<rquansheng::dp30g030_hal::SPI0>::new(Pin::new(Port::B, 8)).unwrap();
         let spi0_mosi =
-            spi::MosiPin::<rquangsheng::dp30g030_hal::SPI0>::new(Pin::new(Port::B, 10)).unwrap();
+            spi::MosiPin::<rquansheng::dp30g030_hal::SPI0>::new(Pin::new(Port::B, 10)).unwrap();
         let spi0_cfg = spi::Config::uvk5_display_default();
         let spi0: spi::Spi0 = spi::Spi::<
-            rquangsheng::dp30g030_hal::SPI0,
-            spi::SckPin<rquangsheng::dp30g030_hal::SPI0>,
-            spi::MosiPin<rquangsheng::dp30g030_hal::SPI0>,
+            rquansheng::dp30g030_hal::SPI0,
+            spi::SckPin<rquansheng::dp30g030_hal::SPI0>,
+            spi::MosiPin<rquansheng::dp30g030_hal::SPI0>,
             spi::NoMiso,
         >::new(
             cx.device.SPI0,
@@ -289,7 +289,7 @@ mod app {
         radio_10ms_task::spawn().ok();
         display_task::spawn().ok();
 
-        let keyboard_state = rquangsheng::keyboard::KeyboardState::default();
+        let keyboard_state = rquansheng::keyboard::KeyboardState::default();
 
         (
             Shared {
@@ -356,7 +356,7 @@ mod app {
         cx.local.pin_backlight.set_high();
 
         loop {
-            let frequency = cx.shared.radio.lock(|r| r.cfg.freq / 10);
+            let frequency = cx.shared.radio.lock(|r| r.cfg.freq);
 
             cx.local.display.clear(BinaryColor::Off).unwrap();
 
@@ -375,7 +375,7 @@ mod app {
 
             Text::new(
                 number_to_string(frequency).as_str(),
-                Point::new(38, 52),
+                Point::new(30, 52),
                 font,
             )
             .draw(cx.local.display)
@@ -413,10 +413,10 @@ mod app {
             let desired_audio_on = cx.shared.radio.lock(|r| {
                 // PTT-driven state transitions (RX <-> TX).
                 match (ptt_stable, r.mode()) {
-                    (true, rquangsheng::radio::Mode::Rx) => {
+                    (true, rquansheng::radio::Mode::Rx) => {
                         let _ = r.enter_tx(cx.local.radio_delay);
                     }
-                    (false, rquangsheng::radio::Mode::Tx) => {
+                    (false, rquansheng::radio::Mode::Tx) => {
                         let _ = r.enter_rx();
                     }
                     _ => {}
@@ -438,7 +438,7 @@ mod app {
             }
 
             {
-                let mut keyboard = rquangsheng::keyboard::Keyboard::init();
+                let mut keyboard = rquansheng::keyboard::Keyboard::init();
 
                 if let Some(key) =
                     keyboard.get_event(&mut cx.local.keyboard_state, &mut cx.local.radio_delay)
@@ -452,7 +452,7 @@ mod app {
     }
 }
 
-fn number_to_string(number: u32) -> heapless::String<8> {
+fn number_to_string(number: u32) -> heapless::String<10> {
     use core::fmt::Write as _;
 
     let mut string = heapless::String::new();
