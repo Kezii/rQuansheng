@@ -4,7 +4,6 @@
 
 use rquangsheng::{self as _, dp30g030_hal}; // global logger + panicking-behavior + memory layout
 
-use display_interface_spi::SPIInterface;
 use rtic_monotonics::systick::prelude::*;
 use st7565::{
     types::{BoosterRatio, PowerControlMode},
@@ -23,6 +22,7 @@ defmt::timestamp!("{=f32:08}s", {
 
 static SERIAL: StaticCell<dp30g030_hal::uart::Uart1> = StaticCell::new();
 
+#[allow(non_camel_case_types)]
 pub struct FG12864390_FKFW;
 impl DisplaySpecs<128, 64, 8> for FG12864390_FKFW {
     const FLIP_ROWS: bool = false;
@@ -54,13 +54,12 @@ mod app {
     use cortex_m::asm;
     use display_interface_spi::SPIInterface;
     use embedded_graphics::draw_target::DrawTarget;
-    use embedded_graphics::geometry::Dimensions;
-    use embedded_graphics::mono_font::ascii::{FONT_8X13, FONT_8X13_BOLD};
+    use embedded_graphics::mono_font::ascii::FONT_8X13_BOLD;
     use embedded_graphics::mono_font::MonoTextStyle;
     use embedded_graphics::pixelcolor::BinaryColor;
     use embedded_graphics::prelude::Size;
     use embedded_graphics::prelude::{Point, Primitive};
-    use embedded_graphics::primitives::{Circle, PrimitiveStyle, Rectangle};
+    use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
     use embedded_graphics::text::Text;
     use embedded_graphics::Drawable;
     use embedded_hal::delay::DelayNs;
