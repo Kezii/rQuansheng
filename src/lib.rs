@@ -9,6 +9,7 @@ use panic_probe as _;
 // TODO(6) Import your HAL
 pub mod bk4819;
 pub mod bk4819_bitbang;
+pub mod bk4819_n;
 pub mod dp30g030_hal;
 pub mod keyboard;
 pub mod radio;

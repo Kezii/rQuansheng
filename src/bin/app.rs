@@ -356,7 +356,7 @@ mod app {
         cx.local.pin_backlight.set_high();
 
         loop {
-            let frequency = cx.shared.radio.lock(|r| r.cfg.freq_10hz / 10);
+            let frequency = cx.shared.radio.lock(|r| r.cfg.freq / 10);
 
             cx.local.display.clear(BinaryColor::Off).unwrap();
 

@@ -19,8 +19,8 @@ pub enum Mode {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Config {
-    /// RX/TX frequency in 10Hz units (matches the C firmware).
-    pub freq_10hz: u32,
+    /// RX/TX frequency in Hz
+    pub freq: u32,
     pub bandwidth: FilterBandwidth,
     /// PA bias (board/calibration dependent). Use conservative values by default.
     pub tx_bias: u8,
@@ -33,7 +33,7 @@ pub struct Config {
 impl Config {
     pub const fn default_uhf_433() -> Self {
         Self {
-            freq_10hz: 43_300_000, // 433.00000 MHz
+            freq: 433_000_000, // 433.00000 MHz
             bandwidth: FilterBandwidth::Narrow,
             tx_bias: 20,
             mic_gain: 16, // ~8.0 dB (matches the reference firmware's mid preset)
@@ -120,14 +120,14 @@ where
         self.bk.toggle_gpio_out(GpioPin::Gpio5Pin1Red, false)?;
         self.bk.toggle_gpio_out(GpioPin::Gpio6Pin2Green, false)?;
 
-        self.bk.set_frequency_10hz(self.cfg.freq_10hz)?;
+        self.bk.set_frequency(self.cfg.freq)?;
         self.bk
-            .pick_rx_filter_path_based_on_frequency(self.cfg.freq_10hz)?;
+            .pick_rx_filter_path_based_on_frequency(self.cfg.freq)?;
         self.bk.toggle_gpio_out(GpioPin::Gpio0Pin28RxEnable, true)?;
 
         // Squelch thresholds: no EEPROM, pick conservative defaults.
         let (open_rssi, close_rssi, open_noise, close_noise, close_glitch, open_glitch) =
-            default_squelch_thresholds(self.cfg.freq_10hz);
+            default_squelch_thresholds(self.cfg.freq);
         self.bk.setup_squelch(
             open_rssi,
             close_rssi,
@@ -162,7 +162,7 @@ where
         self.bk.toggle_gpio_out(GpioPin::Gpio5Pin1Red, true)?;
 
         self.bk.set_filter_bandwidth(self.cfg.bandwidth, true)?;
-        self.bk.set_frequency_10hz(self.cfg.freq_10hz)?;
+        self.bk.set_frequency(self.cfg.freq)?;
         // Mic gain (C: BK4819_REG_7D = 0xE940 | (mic & 0x1f)).
         self.bk.set_mic_gain(self.cfg.mic_gain)?;
         self.bk.prepare_transmit()?;
@@ -170,12 +170,12 @@ where
         delay.delay_ms(10);
 
         self.bk
-            .pick_rx_filter_path_based_on_frequency(self.cfg.freq_10hz)?;
+            .pick_rx_filter_path_based_on_frequency(self.cfg.freq)?;
         self.bk.toggle_gpio_out(GpioPin::Gpio1Pin29PaEnable, true)?;
 
         delay.delay_ms(5);
         self.bk
-            .setup_power_amplifier(self.cfg.tx_bias, self.cfg.freq_10hz)?;
+            .setup_power_amplifier(self.cfg.tx_bias, self.cfg.freq)?;
 
         delay.delay_ms(10);
         self.bk.exit_sub_au()?;

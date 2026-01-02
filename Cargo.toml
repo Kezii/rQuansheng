@@ -28,6 +28,7 @@ display-interface = "0.5.0"
 display-interface-spi = "0.5.0"
 embedded-graphics = "0.8.1"
 heapless = "0.9.2"
+bitfield-struct = "0.12.1"
 
 # cargo build/run
 [profile.dev]
@@ -66,3 +67,5 @@ incremental = false
 lto = 'fat'
 opt-level = "s" # <-
 overflow-checks = false # <-
+
+

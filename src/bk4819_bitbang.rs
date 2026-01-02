@@ -17,6 +17,7 @@ use dp32g030 as pac;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::{InputPin, OutputPin};
 
+use crate::bk4819_n;
 use crate::dp30g030_hal::gpio::Port;
 
 /// A bidirectional GPIO line (used for BK4819 SDA/SDIO).
@@ -49,6 +50,9 @@ pub trait Bk4819Bus {
 
     fn write_reg(&mut self, reg: u8, value: u16) -> Result<(), Self::Error>;
     fn read_reg(&mut self, reg: u8) -> Result<u16, Self::Error>;
+
+    fn write_reg_n(&mut self, reg: bk4819_n::Register) -> Result<(), Self::Error>;
+    fn read_reg_n(&mut self, reg: bk4819_n::Register) -> Result<bk4819_n::Register, Self::Error>;
 }
 
 /// Bit-banged BK4819 bus implementation.
@@ -189,10 +193,7 @@ where
     /// Low-level register read, raw `u8` register address.
     ///
     /// Mirrors `BK4819_ReadRegister()` in the C reference.
-    pub fn read_reg_raw(
-        &mut self,
-        reg: u8,
-    ) -> Result<u16, Error<SCN::Error, SCL::Error, SDA::Error>> {
+    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Error<SCN::Error, SCL::Error, SDA::Error>> {
         self.scn.set_high().map_err(Error::Scn)?;
         self.scl.set_low().map_err(Error::Scl)?;
         self.dly();
@@ -215,7 +216,7 @@ where
     /// Low-level register write, raw `u8` register address.
     ///
     /// Mirrors `BK4819_WriteRegister()` in the C reference.
-    pub fn write_reg_raw(
+    fn write_reg_raw(
         &mut self,
         reg: u8,
         data: u16,
@@ -239,6 +240,23 @@ where
         self.sda.set_high().map_err(Error::Sda)?;
         Ok(())
     }
+
+    pub fn write_reg_n(
+        &mut self,
+        reg: bk4819_n::Register,
+    ) -> Result<(), Error<SCN::Error, SCL::Error, SDA::Error>> {
+        self.write_reg_raw(reg.as_u8(), reg.serialize())?;
+
+        Ok(())
+    }
+
+    pub fn read_reg_n(
+        &mut self,
+        reg: bk4819_n::Register,
+    ) -> Result<bk4819_n::Register, Error<SCN::Error, SCL::Error, SDA::Error>> {
+        let value = self.read_reg_raw(reg.as_u8())?;
+        Ok(bk4819_n::Register::deserialize(&reg, value))
+    }
 }
 
 impl<SCN, SCL, SDA, D> Bk4819Bus for Bk4819BitBang<SCN, SCL, SDA, D>
@@ -258,6 +276,16 @@ where
     #[inline]
     fn read_reg(&mut self, reg: u8) -> Result<u16, Self::Error> {
         self.read_reg_raw(reg)
+    }
+
+    #[inline]
+    fn write_reg_n(&mut self, reg: bk4819_n::Register) -> Result<(), Self::Error> {
+        self.write_reg_n(reg)
+    }
+
+    #[inline]
+    fn read_reg_n(&mut self, reg: bk4819_n::Register) -> Result<bk4819_n::Register, Self::Error> {
+        self.read_reg_n(reg)
     }
 }
 
@@ -290,6 +318,19 @@ where
     #[inline]
     pub fn read_reg(&mut self, reg: u8) -> Result<u16, BUS::Error> {
         self.bus.read_reg(reg)
+    }
+
+    #[inline]
+    pub fn write_reg_n(&mut self, reg: bk4819_n::Register) -> Result<(), BUS::Error> {
+        self.bus.write_reg_n(reg)
+    }
+
+    #[inline]
+    pub fn read_reg_n(
+        &mut self,
+        reg: bk4819_n::Register,
+    ) -> Result<bk4819_n::Register, BUS::Error> {
+        self.bus.read_reg_n(reg)
     }
 
     /// Read-modify-write helper.
