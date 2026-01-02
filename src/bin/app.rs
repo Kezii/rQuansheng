@@ -31,10 +31,13 @@ mod app {
 
     use cortex_m::asm;
     use embedded_hal::delay::DelayNs;
-    use embedded_hal::digital::OutputPin;
+    use embedded_hal::digital::{InputPin, OutputPin};
+    use rquangsheng::bk4819::Bk4819Driver;
     use rquangsheng::bk4819_bitbang::{Bk4819, Bk4819BitBang, Dp32g030BidiPin};
-    use rquangsheng::dp30g030_hal::gpio::{Output, Pin, Port};
+    use rquangsheng::dp30g030_hal::adc;
+    use rquangsheng::dp30g030_hal::gpio::{Input, Output, Pin, Port};
     use rquangsheng::dp30g030_hal::uart;
+    use rquangsheng::radio::{Config as RadioConfig, RadioController};
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
 
     use crate::Mono;
@@ -42,7 +45,9 @@ mod app {
     // Shared resources go here
     #[shared]
     struct Shared {
-        // TODO: Add resources
+        radio:
+            RadioController<Bk4819BitBang<Pin<Output>, Pin<Output>, Dp32g030BidiPin, CycleDelay>>,
+        audio_on: bool,
     }
 
     // Local resources go here
@@ -52,13 +57,15 @@ mod app {
         pin_backlight: Pin<Output>,
         //uart1: uart::Uart1,
         pin_audio_path: Pin<Output>,
-        bk: Bk4819<Bk4819BitBang<Pin<Output>, Pin<Output>, Dp32g030BidiPin, CycleDelay>>,
+        pin_ptt: Pin<Input>,
+        adc: adc::Adc,
+        radio_delay: CycleDelay,
     }
 
     /// Simple busy-wait delay based on core clock.
     ///
     /// This is used only for BK4819 bit-banging (short delays on the order of 1µs).
-    struct CycleDelay {
+    pub struct CycleDelay {
         cycles_per_us: u32,
     }
 
@@ -96,231 +103,7 @@ mod app {
         }
     }
 
-    // --- Minimal BK4819 init + tone (ported from uv-k5-firmware-custom) ---
-
-    const BK_REG_00: u8 = 0x00;
-    const BK_REG_0C: u8 = 0x0C;
-    const BK_REG_09: u8 = 0x09;
-    const BK_REG_10: u8 = 0x10;
-    const BK_REG_11: u8 = 0x11;
-    const BK_REG_12: u8 = 0x12;
-    const BK_REG_13: u8 = 0x13;
-    const BK_REG_14: u8 = 0x14;
-    const BK_REG_19: u8 = 0x19;
-    const BK_REG_1F: u8 = 0x1F;
-    const BK_REG_30: u8 = 0x30;
-    const BK_REG_33: u8 = 0x33;
-    const BK_REG_36: u8 = 0x36;
-    const BK_REG_37: u8 = 0x37;
-    const BK_REG_3E: u8 = 0x3E;
-    const BK_REG_3F: u8 = 0x3F;
-    const BK_REG_47: u8 = 0x47;
-    const BK_REG_48: u8 = 0x48;
-    const BK_REG_49: u8 = 0x49;
-    const BK_REG_50: u8 = 0x50;
-    const BK_REG_70: u8 = 0x70;
-    const BK_REG_71: u8 = 0x71;
-    const BK_REG_7B: u8 = 0x7B;
-    const BK_REG_7D: u8 = 0x7D;
-    const BK_REG_7E: u8 = 0x7E;
-
-    const BK_REG_30_ENABLE_AF_DAC: u16 = 1 << 9;
-    const BK_REG_30_ENABLE_DISC_MODE: u16 = 1 << 8;
-    const BK_REG_30_ENABLE_TX_DSP: u16 = 1 << 1;
-
-    const BK_REG_70_ENABLE_TONE1: u16 = 1 << 15;
-    const BK_REG_70_SHIFT_TONE1_GAIN: u16 = 8;
-
-    const BK_AF_MUTE: u16 = 0;
-    const BK_AF_BEEP: u16 = 3;
-
-    #[inline]
-    fn scale_freq(freq_hz: u16) -> u16 {
-        // Matches C firmware:
-        // (((freq * 1353245) + (1 << 16)) >> 17)
-        ((((freq_hz as u32) * 1_353_245u32) + (1u32 << 16)) >> 17) as u16
-    }
-
-    fn bk_set_af<BUS>(bk: &mut Bk4819<BUS>, af: u16) -> Result<(), BUS::Error>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        // C: (6u<<12) | (AF<<8) | (1u<<6)
-        bk.write_reg(BK_REG_47, (6u16 << 12) | ((af & 0x0F) << 8) | (1u16 << 6))
-    }
-
-    fn bk_enter_tx_mute<BUS>(bk: &mut Bk4819<BUS>) -> Result<(), BUS::Error>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        bk.write_reg(BK_REG_50, 0xBB20)
-    }
-
-    fn bk_exit_tx_mute<BUS>(bk: &mut Bk4819<BUS>) -> Result<(), BUS::Error>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        bk.write_reg(BK_REG_50, 0x3B20)
-    }
-
-    fn bk_set_agc<BUS>(bk: &mut Bk4819<BUS>, enable: bool) -> Result<(), BUS::Error>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        let reg_val = bk.read_reg(BK_REG_7E)?;
-        let currently_enabled = (reg_val & (1u16 << 15)) == 0;
-        if currently_enabled == enable {
-            return Ok(());
-        }
-
-        let next = (reg_val & !(1u16 << 15) & !(0b111u16 << 12))
-            | ((!enable as u16) << 15) // 0=auto(AGC on), 1=fix(AGC off)
-            | (3u16 << 12); // fix index
-        bk.write_reg(BK_REG_7E, next)
-    }
-
-    fn bk_init_agc<BUS>(bk: &mut Bk4819<BUS>, am_modulation: bool) -> Result<(), BUS::Error>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        // Port of BK4819_InitAGC(false) minimal subset.
-        bk.write_reg(BK_REG_13, 0x03BE)?;
-        bk.write_reg(BK_REG_12, 0x037B)?;
-        bk.write_reg(BK_REG_11, 0x027B)?;
-        bk.write_reg(BK_REG_10, 0x007A)?;
-
-        if am_modulation {
-            bk.write_reg(BK_REG_14, 0x0000)?;
-            bk.write_reg(BK_REG_49, (0u16 << 14) | (50u16 << 7) | (32u16 << 0))?;
-        } else {
-            bk.write_reg(BK_REG_14, 0x0019)?;
-            bk.write_reg(BK_REG_49, (0u16 << 14) | (84u16 << 7) | (56u16 << 0))?;
-        }
-
-        bk.write_reg(BK_REG_7B, 0x8420)?;
-        Ok(())
-    }
-
-    fn bk_init<BUS>(bk: &mut Bk4819<BUS>) -> Result<(), BUS::Error>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        // Soft reset
-        bk.write_reg(BK_REG_00, 0x8000)?;
-        bk.write_reg(BK_REG_00, 0x0000)?;
-
-        bk.write_reg(BK_REG_37, 0x1D0F)?;
-        bk.write_reg(BK_REG_36, 0x0022)?;
-
-        bk_init_agc(bk, false)?;
-        bk_set_agc(bk, true)?;
-
-        bk.write_reg(BK_REG_19, 0x1041)?;
-        bk.write_reg(BK_REG_7D, 0xE940)?;
-
-        // RX AF level / DAC gain setup
-        bk.write_reg(
-            BK_REG_48,
-            (11u16 << 12) | (0u16 << 10) | (58u16 << 4) | (8u16 << 0),
-        )?;
-
-        // DTMF coefficients table (kept from reference init)
-        const DTMF_COEFFS: [u16; 16] = [
-            111, 107, 103, 98, 80, 71, 58, 44, 65, 55, 37, 23, 228, 203, 181, 159,
-        ];
-        for (i, &c) in DTMF_COEFFS.iter().enumerate() {
-            bk.write_reg(BK_REG_09, ((i as u16) << 12) | c)?;
-        }
-
-        bk.write_reg(BK_REG_1F, 0x5454)?;
-        bk.write_reg(BK_REG_3E, 0xA037)?;
-
-        // GPIO out state / interrupts mask
-        bk.write_reg(BK_REG_33, 0x9000)?;
-        bk.write_reg(BK_REG_3F, 0x0000)?;
-
-        // Mute AF by default.
-        bk_set_af(bk, BK_AF_MUTE)?;
-        Ok(())
-    }
-
-    fn bk_start_tone<BUS>(bk: &mut Bk4819<BUS>, freq_hz: u16) -> Result<(), BUS::Error>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        // Mirrors BK4819_PlayTone() (setup only; caller can ExitTxMute() to make it audible).
-        bk_enter_tx_mute(bk)?;
-        bk_set_af(bk, BK_AF_BEEP)?;
-
-        // Use the "tuning gain switch = true" path from C beep code (lower gain).
-        let tone_gain: u16 = 28;
-        bk.write_reg(
-            BK_REG_70,
-            BK_REG_70_ENABLE_TONE1 | (tone_gain << BK_REG_70_SHIFT_TONE1_GAIN),
-        )?;
-
-        bk.write_reg(BK_REG_30, 0x0000)?;
-        bk.write_reg(
-            BK_REG_30,
-            BK_REG_30_ENABLE_AF_DAC | BK_REG_30_ENABLE_DISC_MODE | BK_REG_30_ENABLE_TX_DSP,
-        )?;
-
-        bk.write_reg(BK_REG_71, scale_freq(freq_hz))?;
-        Ok(())
-    }
-
-    fn bk_log_reg<BUS>(bk: &mut Bk4819<BUS>, reg: u8, name: &'static str)
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        match bk.read_reg(reg) {
-            Ok(v) => defmt::info!("BK4819 {=str} (0x{=u8:02x}) = 0x{=u16:04x}", name, reg, v),
-            Err(_) => defmt::warn!("BK4819 read failed: {=str} (0x{=u8:02x})", name, reg),
-        }
-    }
-
-    fn bk_write_verify_strict<BUS>(
-        bk: &mut Bk4819<BUS>,
-        reg: u8,
-        value: u16,
-        name: &'static str,
-    ) -> Result<(), ()>
-    where
-        BUS: rquangsheng::bk4819_bitbang::Bk4819Bus,
-    {
-        if bk.write_reg(reg, value).is_err() {
-            defmt::error!(
-                "BK4819 write failed: {=str} (0x{=u8:02x}) <= 0x{=u16:04x}",
-                name,
-                reg,
-                value
-            );
-            return Err(());
-        }
-        match bk.read_reg(reg) {
-            Ok(rb) => {
-                defmt::assert!(
-                    rb == value,
-                    "BK4819 mismatch: {=str} (0x{=u8:02x}) wrote 0x{=u16:04x} read 0x{=u16:04x}",
-                    name,
-                    reg,
-                    value,
-                    rb
-                );
-                defmt::info!(
-                    "BK4819 write/readback OK: {=str} (0x{=u8:02x}) = 0x{=u16:04x}",
-                    name,
-                    reg,
-                    rb
-                );
-                Ok(())
-            }
-            Err(_) => {
-                defmt::error!("BK4819 readback failed: {=str} (0x{=u8:02x})", name, reg);
-                Err(())
-            }
-        }
-    }
+    // NOTE: BK4819 driver logic has moved to `src/bk4819/`.
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
@@ -343,9 +126,15 @@ mod app {
         let scl = Pin::new(Port::C, 1).into_push_pull_output(&cx.device.SYSCON, &cx.device.PORTCON);
         let sda = Dp32g030BidiPin::new(Port::C, 2, &cx.device.SYSCON, &cx.device.PORTCON).unwrap();
 
-        let delay = CycleDelay::new(48_000_000);
-        let bus = Bk4819BitBang::new(scn, scl, sda, delay).unwrap();
-        let bk = Bk4819::new(bus);
+        let delay_bb = CycleDelay::new(48_000_000);
+        let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb).unwrap();
+        let bk = Bk4819Driver::new(Bk4819::new(bus));
+        let mut radio = RadioController::new(bk, RadioConfig::default_uhf_433());
+
+        // PTT is PC5, active-low, with pull-up enabled in the reference firmware.
+        // We do simple polling + debounce in `radio_10ms_task`.
+        let pin_ptt: Pin<Input> =
+            Pin::new(Port::C, 5).into_pull_up_input(&cx.device.SYSCON, &cx.device.PORTCON);
 
         // UART example: UART1 on PA7 (TX) / PA8 (RX), 38400-8N1.
         let uart1_tx =
@@ -369,17 +158,41 @@ mod app {
 
         defmt_serial::defmt_serial(crate::SERIAL.init(uart1));
 
+        // SARADC: battery voltage is on SARADC CH4, pin PA9.
+        // C firmware conversion: v_10mV = raw * 760 / gBatteryCalibration[3].
+        // We do not use EEPROM calibration here; keep a default in the middle
+        // of the allowed calibration range (MENU_BATCAL is 1600..2200).
+        let vbat_pin = adc::Ch4Pin::new(Pin::new(Port::A, 9)).unwrap();
+        let mut adc_cfg = adc::Config::battery_default();
+        adc_cfg.channel_mask = 1u16 << (adc::Channel::Ch4 as u8);
+        let adc = adc::Adc::new(
+            cx.device.SARADC,
+            &cx.device.SYSCON,
+            &cx.device.PORTCON,
+            Some(vbat_pin),
+            None,
+            adc_cfg,
+        )
+        .unwrap();
+
         Mono::start(cx.core.SYST, 48_000_000);
 
         defmt::info!("init");
 
+        // Bring up BK4819 once, then spawn control + tick tasks.
+        if radio.init().is_err() {
+            defmt::warn!("radio init failed");
+        }
+
         task1::spawn().ok();
         uart_task::spawn().ok();
-        beep_task::spawn().ok();
+        radio_10ms_task::spawn().ok();
 
         (
             Shared {
                 // Initialization of shared resources go here
+                radio,
+                audio_on: false,
             },
             Local {
                 // Initialization of local resources go here
@@ -387,7 +200,9 @@ mod app {
                 pin_backlight,
                 //uart1,
                 pin_audio_path,
-                bk,
+                pin_ptt,
+                adc,
+                radio_delay: CycleDelay::new(48_000_000),
             },
         )
     }
@@ -409,77 +224,79 @@ mod app {
 
         loop {
             cx.local.pin_flashlight.set_high();
-            cx.local.pin_backlight.set_low();
-            Mono::delay(500.millis()).await;
+            //cx.local.pin_backlight.set_low();
+            Mono::delay(10.millis()).await;
 
             cx.local.pin_flashlight.set_low();
-            cx.local.pin_backlight.set_high();
+            //cx.local.pin_backlight.set_high();
             Mono::delay(500.millis()).await;
         }
     }
 
     // UART demo task: writes a message periodically on UART1.
-    #[task(priority = 1)]
-    async fn uart_task(_cx: uart_task::Context) {
+    #[task(priority = 1, local = [adc])]
+    async fn uart_task(cx: uart_task::Context) {
         loop {
-            defmt::info!("log task");
+            let raw = cx.local.adc.read_blocking(adc::Channel::Ch4).unwrap_or(0);
+
+            defmt::info!("battery: (raw={=u16})", raw);
 
             Mono::delay(2.secs()).await;
         }
     }
 
-    /// Bring up the BK4819 and start a continuous tone on the speaker.
-    ///
-    /// This is intentionally "no RF": we only reset/init the chip and enable the audio DAC + tone generator.
-    #[task(priority = 1, local = [bk, pin_audio_path])]
-    async fn beep_task(cx: beep_task::Context) {
-        defmt::info!("BK4819 init + start tone");
+    /// 10ms tick task: poll+debounce PTT, poll BK4819 interrupts, and update audio.
+    #[task(priority = 1, shared = [radio, audio_on], local = [pin_audio_path, pin_ptt, radio_delay])]
+    async fn radio_10ms_task(mut cx: radio_10ms_task::Context) {
+        // Simple debounce (like C firmware): require 3 consecutive 10ms samples.
+        let mut ptt_last_sample = false;
+        let mut ptt_stable = false;
+        let mut ptt_stable_count: u8 = 0;
 
-        // Small settle time similar to C firmware beep path.
-        Mono::delay(20.millis()).await;
-
-        // --- Bus sanity checks (read/write/readback) ---
-        bk_log_reg(cx.local.bk, BK_REG_0C, "REG_0C status (pre)");
-        bk_log_reg(cx.local.bk, BK_REG_7E, "REG_7E AGC (pre)");
-
-        // Try a "safe" R/W register before we do anything else.
-        // REG_33 is used by the C firmware as GPIO out state (written early during init).
-        if bk_write_verify_strict(
-            cx.local.bk,
-            BK_REG_33,
-            0x9000,
-            "REG_33 gpio_out_state (probe)",
-        )
-        .is_err()
-        {
-            defmt::error!("BK4819 bus probe failed (REG_33)");
-            return;
-        }
-
-        // Init BK4819 core configuration.
-        if let Err(_) = bk_init(cx.local.bk) {
-            defmt::warn!("BK4819 init failed");
-            return;
-        }
-
-        // Program tone generator at 880Hz, then enable audio path and unmute.
-        if let Err(_) = bk_start_tone(cx.local.bk, 880) {
-            defmt::warn!("BK4819 tone setup failed");
-            return;
-        }
-
-        Mono::delay(2.millis()).await;
-        let _ = cx.local.pin_audio_path.set_high(); // speaker/amp enable
-        Mono::delay(60.millis()).await;
-
-        if let Err(_) = bk_exit_tx_mute(cx.local.bk) {
-            defmt::warn!("BK4819 exit-tx-mute failed");
-            return;
-        }
-
-        defmt::info!("Tone running (880Hz)");
         loop {
-            Mono::delay(5.secs()).await;
+            // Active-low: pressed when pin is low.
+            let pressed_now = cx.local.pin_ptt.is_low().unwrap_or(false);
+
+            if pressed_now == ptt_last_sample {
+                ptt_stable_count = ptt_stable_count.saturating_add(1);
+            } else {
+                ptt_last_sample = pressed_now;
+                ptt_stable_count = 0;
+            }
+
+            if ptt_stable_count >= 3 {
+                ptt_stable = pressed_now;
+            }
+
+            // Do everything that touches BK4819 under one lock, then act on the GPIO audio path.
+            let desired_audio_on = cx.shared.radio.lock(|r| {
+                // PTT-driven state transitions (RX <-> TX).
+                match (ptt_stable, r.mode()) {
+                    (true, rquangsheng::radio::Mode::Rx) => {
+                        let _ = r.enter_tx(cx.local.radio_delay);
+                    }
+                    (false, rquangsheng::radio::Mode::Tx) => {
+                        let _ = r.enter_rx();
+                    }
+                    _ => {}
+                }
+
+                // Poll BK IRQ/status (C-style) and update internal state/LED/AF.
+                let _ = r.poll_interrupts();
+
+                // Board audio path should follow controller's desired state.
+                r.desired_audio_on()
+            });
+
+            cx.shared.audio_on.lock(|a| *a = desired_audio_on);
+
+            if desired_audio_on {
+                let _ = cx.local.pin_audio_path.set_high();
+            } else {
+                let _ = cx.local.pin_audio_path.set_low();
+            }
+
+            Mono::delay(10.millis()).await;
         }
     }
 }

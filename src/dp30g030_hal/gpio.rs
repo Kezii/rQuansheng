@@ -99,6 +99,32 @@ impl Pin<Disabled> {
             _mode: PhantomData,
         }
     }
+
+    /// Configure this pin as input with pull-up enabled.
+    ///
+    /// This mirrors what the reference C firmware does for the PTT button:
+    /// - GPIO function
+    /// - input buffer enabled
+    /// - pull-up enabled, pull-down disabled
+    /// - open-drain enabled (pad setting used by the reference firmware)
+    /// - direction set to input
+    #[inline]
+    pub fn into_pull_up_input(self, syscon: &pac::SYSCON, portcon: &pac::PORTCON) -> Pin<Input> {
+        debug_assert!(is_valid_pin(self.port, self.pin));
+        enable_gpio_clock(syscon, self.port);
+        select_gpio_function(portcon, self.port, self.pin);
+        set_input_enable(portcon, self.port, self.pin, true);
+        set_pull_up(portcon, self.port, self.pin, true);
+        set_pull_down(portcon, self.port, self.pin, false);
+        set_open_drain(portcon, self.port, self.pin, true);
+        set_direction(self.port, self.pin, false);
+
+        Pin {
+            port: self.port,
+            pin: self.pin,
+            _mode: PhantomData,
+        }
+    }
 }
 
 impl ErrorType for Pin<Output> {
@@ -245,6 +271,54 @@ fn set_open_drain(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
         Port::C => {
             portcon
                 .portc_od()
+                .modify(|r, w| unsafe { w.bits(set(r.bits())) });
+        }
+    }
+}
+
+#[inline(always)]
+fn set_pull_up(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
+    let bit = 1u32 << (pin as u32);
+    let set = |v: u32| if enable { v | bit } else { v & !bit };
+
+    match port {
+        Port::A => {
+            portcon
+                .porta_pu()
+                .modify(|r, w| unsafe { w.bits(set(r.bits())) });
+        }
+        Port::B => {
+            portcon
+                .portb_pu()
+                .modify(|r, w| unsafe { w.bits(set(r.bits())) });
+        }
+        Port::C => {
+            portcon
+                .portc_pu()
+                .modify(|r, w| unsafe { w.bits(set(r.bits())) });
+        }
+    }
+}
+
+#[inline(always)]
+fn set_pull_down(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
+    let bit = 1u32 << (pin as u32);
+    let set = |v: u32| if enable { v | bit } else { v & !bit };
+
+    match port {
+        Port::A => {
+            portcon
+                .porta_pd()
+                .modify(|r, w| unsafe { w.bits(set(r.bits())) });
+        }
+        Port::B => {
+            portcon
+                .portb_pd()
+                .modify(|r, w| unsafe { w.bits(set(r.bits())) });
+        }
+        Port::C => {
+            portcon
+                .portc_pd()
                 .modify(|r, w| unsafe { w.bits(set(r.bits())) });
         }
     }

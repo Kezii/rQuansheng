@@ -7,17 +7,14 @@ version = "0.1.0"
 [dependencies]
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7.5"
-defmt = { version = "0.3", features = ["encoding-rzcobs"] }
-#defmt-brtt = { version = "0.1", default-features = false, features = ["rtt"] }
+defmt = { version = "0.3", features = ["encoding-raw"] }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-# TODO(4) Select the correct rtic backend
 rtic = { version = "2.0.0", features = [ "thumbv6-backend" ] }
 
 dp32g030 = { version = "1.0.0", features = ["critical-section", "defmt", "rt"] }
 
 portable-atomic = { version = "1.13.0", features = ["critical-section"] }
 
-# TODO add a monotonic if you use scheduling
 rtic-monotonics = { version = "2.1.0", features = [ "cortex-m-systick" ]}
 embedded-hal = "1.0.0"
 embedded-hal-nb = "1.0.0"
@@ -63,11 +60,3 @@ incremental = false
 lto = 'fat'
 opt-level = "s" # <-
 overflow-checks = false # <-
-
-# uncomment this to switch from the crates.io version of defmt to its git version
-# check app-template's README for instructions
-# [patch.crates-io]
-# defmt = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }
-# defmt-rtt = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }
-# defmt-test = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }
-# panic-probe = { git = "https://github.com/knurling-rs/defmt", rev = "use defmt version supported by probe-rs (see changelog)" }

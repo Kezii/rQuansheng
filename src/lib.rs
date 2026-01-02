@@ -7,8 +7,10 @@ use defmt_serial as _;
 use panic_probe as _;
 
 // TODO(6) Import your HAL
+pub mod bk4819;
 pub mod bk4819_bitbang;
 pub mod dp30g030_hal;
+pub mod radio;
 use dp32g030 as _;
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message

@@ -11,12 +11,15 @@ this is still based on the reverse-engineered C firmware, i.e. not a black box r
 - [x] run a binary
 - [x] run RTIC
 - [x] gpio driver
+- [ ] adc / battery level
 - [x] working bk4819 bitbang driver
-- [ ] working bk4819 hal and library
+- [x] working bk4819 hal and library
 - [ ] keyboard driver and events
 - [ ] display driver
+- [ ] eeprom driver 
 
 ## usage
-- [ ] fm radio rx
+- [x] fm radio rx
 - [ ] fm radio tx
 - [ ] basic UI
+- [ ] eeprom settings save
