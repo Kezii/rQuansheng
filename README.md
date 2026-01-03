@@ -1,9 +1,14 @@
-# rquansheng
+# rQuansheng
 
 This is an highly experimental from-scratch reimplementation for a firmware for the Quansheng UV-K5 radio
 
 This is not a black box reimplementation, I'm still using the C code as reference, but the point is to move away from that, especially on the UI 
 
+# Development
+
+Firmware is in `cross/rquansheng`
+
+PC software in `host_sw`
 
 # Roadmap
 

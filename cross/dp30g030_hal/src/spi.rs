@@ -17,7 +17,7 @@ use dp32g030 as pac;
 
 use embedded_hal::spi;
 
-use crate::dp30g030_hal::gpio::Port;
+use crate::gpio::Port;
 
 /// SPI clock divisor as encoded by the hardware `SPR` field.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -407,7 +407,7 @@ impl MisoConfig<pac::SPI1> for MisoPin<pac::SPI1> {
 impl SckPin<pac::SPI0> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -424,7 +424,7 @@ impl SckPin<pac::SPI0> {
 impl MosiPin<pac::SPI0> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -441,7 +441,7 @@ impl MosiPin<pac::SPI0> {
 impl MisoPin<pac::SPI0> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -458,7 +458,7 @@ impl MisoPin<pac::SPI0> {
 impl SckPin<pac::SPI1> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -475,7 +475,7 @@ impl SckPin<pac::SPI1> {
 impl MosiPin<pac::SPI1> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -492,7 +492,7 @@ impl MosiPin<pac::SPI1> {
 impl MisoPin<pac::SPI1> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();

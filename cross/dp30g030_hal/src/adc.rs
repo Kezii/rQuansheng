@@ -12,7 +12,7 @@ use core::{error, fmt};
 
 use dp32g030 as pac;
 
-use crate::dp30g030_hal::gpio::{Pin, Port};
+use crate::gpio::{Pin, Port};
 
 /// ADC configuration.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -171,7 +171,7 @@ pub struct Ch9Pin {
 
 impl Ch4Pin {
     #[inline]
-    pub fn new(pin: Pin<crate::dp30g030_hal::gpio::Disabled>) -> Result<Self, InvalidPin> {
+    pub fn new(pin: Pin<crate::gpio::Disabled>) -> Result<Self, InvalidPin> {
         if pin.port() == Port::A && pin.pin() == 9 {
             Ok(Self { _priv: () })
         } else {
@@ -182,7 +182,7 @@ impl Ch4Pin {
 
 impl Ch9Pin {
     #[inline]
-    pub fn new(pin: Pin<crate::dp30g030_hal::gpio::Disabled>) -> Result<Self, InvalidPin> {
+    pub fn new(pin: Pin<crate::gpio::Disabled>) -> Result<Self, InvalidPin> {
         if pin.port() == Port::A && pin.pin() == 14 {
             Ok(Self { _priv: () })
         } else {

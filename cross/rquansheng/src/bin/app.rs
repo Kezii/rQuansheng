@@ -1,14 +1,13 @@
 #![no_main]
 #![no_std]
-#![feature(type_alias_impl_trait)]
+//#![feature(type_alias_impl_trait)]
 
-use rquansheng::{self as _, dp30g030_hal}; // global logger + panicking-behavior + memory layout
+use rquansheng::{self as _}; // global logger + panicking-behavior + memory layout
+
+use dp30g030_hal as _;
 
 use rtic_monotonics::systick::prelude::*;
-use st7565::{
-    types::{BoosterRatio, PowerControlMode},
-    DisplaySpecs,
-};
+
 use static_cell::StaticCell;
 
 systick_monotonic!(Mono, 1_00);
@@ -41,33 +40,26 @@ static SERIAL: StaticCell<dp30g030_hal::uart::Uart1> = StaticCell::new();
 
 // TODO(7) Configure the `rtic::app` macro
 #[rtic::app(
-    device = rquansheng::dp30g030_hal,
+    device = dp30g030_hal,
     // TODO: Replace the `FreeInterrupt1, ...` with free interrupt vectors if software tasks are used
     // You can usually find the names of the interrupt vectors in the some_hal::pac::interrupt enum.
     dispatchers = [IWDT]
 )]
 
 mod app {
-    use embedded_graphics::prelude::{Point, Primitive};
-    use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
+    use dp30g030_hal::adc;
+    use dp30g030_hal::gpio::{Input, Output, Pin, Port};
+    use dp30g030_hal::uart;
     use embedded_hal::digital::{InputPin, OutputPin};
-    use embedded_hal_bus::spi::ExclusiveDevice;
-    use heapless::String;
     use rquansheng::bk4819::Bk4819Driver;
     use rquansheng::bk4819_bitbang::{Bk4819, Bk4819BitBang, Dp32g030BidiPin};
     use rquansheng::delay::CycleDelay;
     use rquansheng::dialer::Dialer;
-    use rquansheng::display::Rendering;
-    use rquansheng::dp30g030_hal::adc;
-    use rquansheng::dp30g030_hal::gpio::{Input, Output, Pin, Port};
-    use rquansheng::dp30g030_hal::spi;
-    use rquansheng::dp30g030_hal::uart;
+    use rquansheng::display::{DisplayMgr, RenderingMgr};
     use rquansheng::keyboard::KeyboardState;
     use rquansheng::radio::{ChannelConfig as RadioConfig, RadioController};
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
     use rtic_sync::signal::{Signal, SignalReader, SignalWriter};
-    use st7565::{GraphicsPageBuffer, ST7565};
-    use static_cell::StaticCell;
 
     use crate::Mono;
 
@@ -91,7 +83,7 @@ mod app {
         adc: adc::Adc,
         radio_delay: CycleDelay,
         keyboard_state: KeyboardState,
-        display: Rendering,
+        display: DisplayMgr,
         display_update_reader: SignalReader<'static, bool>,
         display_update_writer: SignalWriter<'static, bool>,
     }
@@ -122,7 +114,7 @@ mod app {
         let delay_bb = CycleDelay::new(48_000_000);
         let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb).unwrap();
         let bk = Bk4819Driver::new(Bk4819::new(bus));
-        let mut radio = RadioController::new(bk, RadioConfig::default_uhf_433());
+        let mut radio = RadioController::new(bk, RadioConfig::default());
 
         // PTT is PC5, active-low, with pull-up enabled in the reference firmware.
         // We do simple polling + debounce in `radio_10ms_task`.
@@ -130,15 +122,13 @@ mod app {
             Pin::new(Port::C, 5).into_pull_up_input(&cx.device.SYSCON, &cx.device.PORTCON);
 
         // UART example: UART1 on PA7 (TX) / PA8 (RX), 38400-8N1.
-        let uart1_tx =
-            uart::TxPin::<rquansheng::dp30g030_hal::UART1>::new(Pin::new(Port::A, 7)).unwrap();
-        let uart1_rx =
-            uart::RxPin::<rquansheng::dp30g030_hal::UART1>::new(Pin::new(Port::A, 8)).unwrap();
+        let uart1_tx = uart::TxPin::<dp30g030_hal::UART1>::new(Pin::new(Port::A, 7)).unwrap();
+        let uart1_rx = uart::RxPin::<dp30g030_hal::UART1>::new(Pin::new(Port::A, 8)).unwrap();
         let uart1_cfg = uart::Config::new(48_000_000, 38_400);
         let uart1: uart::Uart1 = uart::Uart::<
-            rquansheng::dp30g030_hal::UART1,
-            uart::TxPin<rquansheng::dp30g030_hal::UART1>,
-            uart::RxPin<rquansheng::dp30g030_hal::UART1>,
+            dp30g030_hal::UART1,
+            uart::TxPin<dp30g030_hal::UART1>,
+            uart::RxPin<dp30g030_hal::UART1>,
         >::new(
             cx.device.UART1,
             &cx.device.SYSCON,
@@ -168,10 +158,9 @@ mod app {
         )
         .unwrap();
 
-        let (mut display_update_writer, mut display_update_reader) =
-            cx.local.poke_display_update.split();
+        let (display_update_writer, display_update_reader) = cx.local.poke_display_update.split();
 
-        let display = Rendering::new(cx.device.SPI0, &cx.device.SYSCON, &cx.device.PORTCON);
+        let display = DisplayMgr::new(cx.device.SPI0, &cx.device.SYSCON, &cx.device.PORTCON);
 
         Mono::start(cx.core.SYST, 48_000_000);
 
@@ -194,7 +183,7 @@ mod app {
                 // Initialization of shared resources go here
                 radio,
                 audio_on: false,
-                dialer: Dialer::new(),
+                dialer: Dialer::default(),
             },
             Local {
                 // Initialization of local resources go here
@@ -260,9 +249,16 @@ mod app {
             let channel_cfg = cx.shared.radio.lock(|r| r.channel_cfg);
             let rssi_db = cx.shared.radio.lock(|r| r.bk.get_rssi_dbm().unwrap_or(0));
             let dialer = cx.shared.dialer.lock(|d| d.clone());
-            cx.local
-                .display
-                .render_main(channel_cfg, rssi_db as f32, &dialer);
+
+            RenderingMgr::render_main(
+                &mut cx.local.display.display,
+                channel_cfg,
+                rssi_db as f32,
+                &dialer,
+            )
+            .unwrap();
+
+            cx.local.display.display.flush().unwrap();
 
             let left = cx.local.display_update_reader.wait();
             let right = Mono::delay(1000.millis());
@@ -325,7 +321,7 @@ mod app {
                 let mut keyboard = rquansheng::keyboard::Keyboard::init();
 
                 if let Some(key) =
-                    keyboard.get_event(&mut cx.local.keyboard_state, &mut cx.local.radio_delay)
+                    keyboard.get_event(cx.local.keyboard_state, &mut cx.local.radio_delay)
                 {
                     defmt::info!("key pressed: {:?}", key);
                     cx.shared.dialer.lock(|d| d.eat_keyboard_event(key));

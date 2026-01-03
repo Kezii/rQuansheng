@@ -31,11 +31,11 @@ pub struct ChannelConfig {
     pub mic_gain: u8,
 }
 
-impl ChannelConfig {
-    pub const fn default_uhf_433() -> Self {
+impl Default for ChannelConfig {
+    fn default() -> Self {
         Self {
             freq: 433_000_000, // 433.00000 MHz
-            bandwidth: FilterBandwidth::Narrow,
+            bandwidth: FilterBandwidth::Wide,
             tx_bias: 20,
             mic_gain: 16, // ~8.0 dB (matches the reference firmware's mid preset)
         }

@@ -17,7 +17,7 @@ use dp32g030 as pac;
 use embedded_hal_nb::serial;
 use embedded_io as eio;
 
-use crate::dp30g030_hal::gpio::Port;
+use crate::gpio::Port;
 
 /// UART configuration.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -404,7 +404,7 @@ fn uart_rx_function<UART: Instance>(port: Port, pin: u8) -> Option<u8> {
 impl TxPin<pac::UART0> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -421,7 +421,7 @@ impl TxPin<pac::UART0> {
 impl RxPin<pac::UART0> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -438,7 +438,7 @@ impl RxPin<pac::UART0> {
 impl TxPin<pac::UART1> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -455,7 +455,7 @@ impl TxPin<pac::UART1> {
 impl RxPin<pac::UART1> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -472,7 +472,7 @@ impl RxPin<pac::UART1> {
 impl TxPin<pac::UART2> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -489,7 +489,7 @@ impl TxPin<pac::UART2> {
 impl RxPin<pac::UART2> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();

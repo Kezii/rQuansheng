@@ -18,7 +18,7 @@ use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::{InputPin, OutputPin};
 
 use crate::bk4819_n;
-use crate::dp30g030_hal::gpio::Port;
+use dp30g030_hal::gpio::Port;
 
 /// A bidirectional GPIO line (used for BK4819 SDA/SDIO).
 ///

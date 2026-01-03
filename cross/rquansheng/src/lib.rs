@@ -13,7 +13,6 @@ pub mod bk4819_n;
 pub mod delay;
 pub mod dialer;
 pub mod display;
-pub mod dp30g030_hal;
 pub mod keyboard;
 pub mod radio;
 

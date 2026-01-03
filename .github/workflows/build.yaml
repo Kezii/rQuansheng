@@ -29,6 +29,12 @@ jobs:
       - name: Cache Dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Cargo check
+      - name: Cargo check (host_sw)
+        working-directory: host_sw
         run: |
-          cargo check --workspace --lib --bins --examples
+          cargo check
+
+      - name: Cargo check (cross/rquansheng)
+        working-directory: cross/rquansheng
+        run: |
+          cargo check

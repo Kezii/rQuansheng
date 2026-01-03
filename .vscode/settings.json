@@ -1,0 +1,10 @@
+{
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml",
+        "cross/Cargo.toml",
+    ],
+    "rust-analyzer.check.allTargets": false,
+    "cSpell.words": [
+        "rquansheng"
+    ]
+}

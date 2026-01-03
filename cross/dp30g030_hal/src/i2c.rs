@@ -19,7 +19,7 @@ use dp32g030 as pac;
 
 use embedded_hal::i2c;
 
-use crate::dp30g030_hal::gpio::Port;
+use crate::gpio::Port;
 
 /// IIC / I2C configuration.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -349,7 +349,7 @@ fn iic_sda_function<IIC: Instance>(port: Port, pin: u8) -> Option<u8> {
 impl SclPin<pac::IIC0> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -366,7 +366,7 @@ impl SclPin<pac::IIC0> {
 impl SdaPin<pac::IIC0> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -383,7 +383,7 @@ impl SdaPin<pac::IIC0> {
 impl SclPin<pac::IIC1> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
@@ -400,7 +400,7 @@ impl SclPin<pac::IIC1> {
 impl SdaPin<pac::IIC1> {
     #[inline]
     pub fn new(
-        pin: crate::dp30g030_hal::gpio::Pin<crate::dp30g030_hal::gpio::Disabled>,
+        pin: crate::gpio::Pin<crate::gpio::Disabled>,
     ) -> Result<Self, InvalidPin> {
         let port = pin.port();
         let p = pin.pin();
