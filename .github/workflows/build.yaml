@@ -19,7 +19,7 @@ jobs:
       
       - name: Install rust nightly
         run: |
-          rustup toolchain install nightly --profile minimal --component rust-src rustfmt llvm-tools-preview
+          rustup toolchain install nightly --profile minimal --component rust-src --component rustfmt --component llvm-tools-preview
           rustup override set nightly
 
       - name: Configure rust target

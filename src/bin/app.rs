@@ -13,11 +13,28 @@ use static_cell::StaticCell;
 
 systick_monotonic!(Mono, 1_00);
 
+#[derive(Copy, Clone)]
+struct Uptime {
+    secs: u32,
+    csecs: u8,
+}
+
+impl defmt::Format for Uptime {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "{=u32:06}.{=u8:02}s", self.secs, self.csecs);
+    }
+}
+
 // Use SysTick-based monotonic (100 Hz) as defmt timestamp: show uptime in seconds.
-defmt::timestamp!("{=f32:08}s", {
+defmt::timestamp!("{}", {
     let ticks = Mono::now().duration_since_epoch().ticks();
 
-    ticks as f32 / 100.0
+    let secs = ticks / 100;
+    let csecs = ticks % 100;
+    Uptime {
+        secs,
+        csecs: csecs as u8,
+    }
 });
 
 static SERIAL: StaticCell<dp30g030_hal::uart::Uart1> = StaticCell::new();
