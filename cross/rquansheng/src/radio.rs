@@ -15,7 +15,7 @@ use crate::bk4819_bitbang::Bk4819Bus;
 use crate::bk4819_n::{Reg3F, Register};
 use crate::dialer::Dialer;
 use crate::display::RenderingMgr;
-use crate::keyboard::{KeyEvent, KeyboardState};
+use crate::keyboard::{KeyEvent, KeyboardState, QuanshengKey};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Mode {
@@ -68,7 +68,7 @@ where
     mode: Mode,
     squelch_open: bool,
     rendering_mgr: RenderingMgr,
-    dialer: Dialer,
+    dialer: Dialer<8>,
     keyboard_state: KeyboardState,
 }
 
@@ -120,7 +120,15 @@ where
         self.enter_rx()
     }
 
-    pub fn eat_keyboard_event(&mut self, event: Option<KeyEvent>) {
+    pub fn eat_keyboard_event<D: DelayNs>(&mut self, event: Option<KeyEvent>, delay: &mut D) {
+        if let Some(KeyEvent::KeyPressed(QuanshengKey::Ptt)) = event {
+            let _ = self.enter_tx(delay);
+        }
+
+        if let Some(KeyEvent::KeyReleased(QuanshengKey::Ptt)) = event {
+            let _ = self.enter_rx();
+        }
+
         if let Some(event) = event {
             self.dialer.eat_keyboard_event(event);
         }
@@ -136,21 +144,14 @@ where
     ) -> Result<(), BUS::Error> {
         let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
 
-        let _ = RenderingMgr::render_main(display, self.channel_cfg, rssi as f32, &self.dialer);
+        let _ = self.rendering_mgr.render_main(
+            display,
+            self.channel_cfg,
+            rssi,
+            &self.dialer,
+            self.mode,
+        );
 
-        Ok(())
-    }
-
-    pub fn eat_ptt<D: DelayNs>(&mut self, ptt: bool, delay: &mut D) -> Result<(), BUS::Error> {
-        match (ptt, self.mode()) {
-            (true, Mode::Rx) => {
-                let _ = self.enter_tx(delay);
-            }
-            (false, Mode::Tx) => {
-                let _ = self.enter_rx();
-            }
-            _ => {}
-        }
         Ok(())
     }
 

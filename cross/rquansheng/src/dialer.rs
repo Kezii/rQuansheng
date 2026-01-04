@@ -3,19 +3,19 @@ use heapless::String;
 use crate::keyboard::{KeyEvent, QuanshengKey};
 
 #[derive(Clone)]
-pub struct Dialer {
-    number: String<6>,
+pub struct Dialer<const N: usize> {
+    number: String<N>,
 }
 
-impl Default for Dialer {
+impl<const N: usize> Default for Dialer<N> {
     fn default() -> Self {
         Self {
-            number: String::<6>::new(),
+            number: String::<N>::new(),
         }
     }
 }
 
-impl Dialer {
+impl<const N: usize> Dialer<N> {
     pub fn eat_keyboard_event(&mut self, event: KeyEvent) {
         if let KeyEvent::KeyPressed(key) = event {
             if let Some(ch) = key.as_ascii_char() {
@@ -24,8 +24,12 @@ impl Dialer {
         }
     }
 
-    pub fn get_as_string(&self) -> String<6> {
+    pub fn get_as_string(&self) -> String<N> {
         self.number.clone()
+    }
+
+    pub fn is_dialing(&self) -> bool {
+        !self.number.is_empty() && self.number.len() < N
     }
 
     pub fn clear(&mut self) {
@@ -33,7 +37,7 @@ impl Dialer {
     }
 
     pub fn get_frequency(&mut self) -> Option<u32> {
-        if self.number.len() != 6 {
+        if self.number.len() != N {
             return None;
         }
         let mut frequency = 0;

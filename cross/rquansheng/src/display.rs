@@ -3,8 +3,10 @@ use dp32g030::{PORTCON, SPI0, SYSCON};
 use embedded_graphics::{
     mono_font::{ascii::FONT_8X13_BOLD, MonoTextStyle},
     pixelcolor::BinaryColor,
-    prelude::Point,
+    prelude::{Point, Primitive, Size},
+    primitives::{PrimitiveStyle, Rectangle},
     text::Text,
+    Pixel,
 };
 use embedded_hal_bus::spi::ExclusiveDevice;
 use heapless::String;
@@ -14,7 +16,11 @@ use st7565::{
 };
 use static_cell::StaticCell;
 
-use crate::{delay::CycleDelay, dialer::Dialer, radio::ChannelConfig};
+use crate::{
+    delay::CycleDelay,
+    dialer::Dialer,
+    radio::{ChannelConfig, Mode},
+};
 use dp30g030_hal::{
     self,
     gpio::{Output, Pin, Port},
@@ -108,35 +114,110 @@ impl DisplayMgr {
     }
 }
 
-pub struct RenderingMgr {}
+pub struct RenderingMgr {
+    historical_rssi: CircularBuffer<u8, 128>,
+}
 
 impl Default for RenderingMgr {
     fn default() -> Self {
-        Self {}
+        Self {
+            historical_rssi: CircularBuffer::new(),
+        }
     }
 }
 
 impl RenderingMgr {
     pub fn render_main<D: DrawTarget<Color = BinaryColor>>(
+        &mut self,
         display: &mut D,
         channel_cfg: ChannelConfig,
-        rssi: f32,
-        dialer: &Dialer,
+        rssi: i16,
+        dialer: &Dialer<8>,
+        mode: Mode,
     ) -> Result<(), D::Error> {
-        let mut string = String::<64>::new();
-        use core::fmt::Write;
-
-        writeln!(string, "> {} kHz", dialer.get_as_string()).unwrap();
-        writeln!(string, "f: {} kHz", channel_cfg.freq / 1000).unwrap();
-        writeln!(string, "Bw: {:?}", channel_cfg.bandwidth).unwrap();
-        write!(string, "RSSI: ").unwrap();
-        write_float_simple_prec(&mut string, rssi, 1);
-        writeln!(string, " dBm").unwrap();
-
         display.clear(BinaryColor::Off)?;
 
-        let font = MonoTextStyle::new(&FONT_8X13_BOLD, BinaryColor::On);
-        Text::new(string.as_str(), Point::new(1, 13), font).draw(display)?;
+        // layout elements
+
+        let main_frequency_y = 35;
+        let under_main_frequency_y = 43;
+
+        use core::fmt::Write;
+
+        let verysmallfont = MonoTextStyle::new(
+            &embedded_graphics::mono_font::ascii::FONT_6X12,
+            BinaryColor::On,
+        );
+        let smallfont = MonoTextStyle::new(&profont::PROFONT_10_POINT, BinaryColor::On);
+        let font = MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
+        let bigfont = MonoTextStyle::new(&profont::PROFONT_24_POINT, BinaryColor::On);
+
+        {
+            let mut main_frequency = String::<8>::new();
+            if dialer.is_dialing() {
+                main_frequency = dialer.get_as_string();
+            } else {
+                write!(main_frequency, "{}", channel_cfg.freq / 10).ok();
+            }
+            let split = main_frequency.as_str().split_at_checked(6);
+            let f6 = if let Some((first, _)) = split {
+                first
+            } else {
+                main_frequency.as_str()
+            };
+            let l2 = if let Some((_, last)) = split {
+                last
+            } else {
+                ""
+            };
+            Text::new(f6, Point::new(10, main_frequency_y), bigfont).draw(display)?;
+            Text::new(l2, Point::new(10 + 6 * 16, main_frequency_y - 1), font).draw(display)?;
+            Rectangle::new(
+                Point::new(3 * 16 + 8, main_frequency_y - 2),
+                Size::new(2, 2),
+            )
+            .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
+            .draw(display)?;
+        }
+
+        let mut bandwidth_string = String::<6>::new();
+        write!(bandwidth_string, "{:?}", channel_cfg.bandwidth).ok();
+        Text::new(
+            &bandwidth_string,
+            Point::new(16, under_main_frequency_y),
+            verysmallfont,
+        )
+        .draw(display)?;
+
+        let mut rssi_string = String::<6>::new();
+        if mode == Mode::Rx {
+            write!(rssi_string, "{}", rssi).ok();
+        } else {
+            write!(rssi_string, " TX").ok();
+        }
+        Text::new(
+            &rssi_string,
+            Point::new(75, under_main_frequency_y),
+            verysmallfont,
+        )
+        .draw(display)?;
+
+        {
+            let battery = 100; // stub
+
+            let mut battery_string = String::<6>::new();
+            write!(battery_string, "{}%", battery).ok();
+            Text::new(&battery_string, Point::new(100, 8), smallfont).draw(display)?;
+        }
+
+        self.historical_rssi.push(((rssi + 100) / 8) as u8);
+
+        for i in 0..128 {
+            if let Some(rssi) = self.historical_rssi.get(i) {
+                let pixel = Pixel(Point::new(i as i32, 63 - *rssi as i32), BinaryColor::On);
+                display.draw_iter(core::iter::once(pixel))?;
+            }
+        }
 
         Ok(())
     }
@@ -227,5 +308,45 @@ pub fn write_float_simple_prec<const N: usize>(
             }
             k += 1;
         }
+    }
+}
+
+pub struct CircularBuffer<T, const N: usize> {
+    buffer: [T; N],
+    head: usize,
+    tail: usize,
+}
+
+impl<T: Default, const N: usize> CircularBuffer<T, N> {
+    pub fn new() -> Self {
+        Self {
+            buffer: core::array::from_fn(|_| T::default()),
+            head: 0,
+            tail: 0,
+        }
+    }
+
+    pub fn push(&mut self, value: T) {
+        self.buffer[self.head] = value;
+        self.head = (self.head + 1) % N;
+        if self.head == self.tail {
+            self.tail = (self.tail + 1) % N;
+        }
+    }
+
+    pub fn get(&self, index: usize) -> Option<&T> {
+        if index >= N {
+            return None;
+        }
+        let offset = (self.head + index) % N;
+        Some(&self.buffer[offset])
+    }
+
+    pub fn len(&self) -> usize {
+        N
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.head == self.tail
     }
 }

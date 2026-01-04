@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 embedded-graphics = "0.8.1"
 embedded-graphics-simulator = { git = "https://github.com/Kezii/simulator.git"}
+embedded-hal = "1.0.0"
 env_logger = "0.11.8"
 log = "0.4.29"
 rquansheng = {path = "../cross/rquansheng"}

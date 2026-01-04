@@ -1,11 +1,14 @@
 use embedded_graphics::{
+    mono_font::MonoTextStyle,
     pixelcolor::{BinaryColor, Rgb888},
     prelude::*,
+    text::Text,
 };
 use embedded_graphics_simulator::{
     BinaryColorTheme, OutputSettingsBuilder, SimulatorDisplay, SimulatorEvent, Window,
-    sdl2::Keycode,
+    sdl2::{Keycode, MouseButton},
 };
+use embedded_hal::delay::DelayNs;
 use log::info;
 use rquansheng::{
     bk4819::Bk4819Driver,
@@ -30,24 +33,42 @@ fn main() -> Result<(), core::convert::Infallible> {
     let mut window = Window::new("rQuansheng", &output_settings);
 
     let dummy_radio_bus = DummyRadioBus;
+    let mut dummy_delay = DummyDelay;
 
     let mut radio = RadioController::new(Bk4819Driver::new(Bk4819::new(dummy_radio_bus)));
+    window.update(&display);
 
     'main: loop {
         radio.render_display(&mut display).unwrap();
-        window.update(&display);
+
+        let mut wait = false;
 
         for event in window.events() {
             if let SimulatorEvent::Quit = event {
                 break 'main;
             }
 
-            radio.eat_keyboard_event(simulator_event_to_quansheng_key(event));
+            if let SimulatorEvent::MouseButtonDown {
+                mouse_btn: MouseButton::Left,
+                point,
+            } = event
+            {
+                draw_text_override(&mut display, &format!("{:#?}", point));
+                wait = true;
+            }
+
+            radio.eat_keyboard_event(simulator_event_to_quansheng_key(event), &mut dummy_delay);
+        }
+
+        window.update(&display);
+
+        if wait {
+            std::thread::sleep(std::time::Duration::from_millis(1000));
         }
 
         radio.poll_interrupts().ok();
 
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 
     Ok(())
@@ -55,6 +76,15 @@ fn main() -> Result<(), core::convert::Infallible> {
 
 pub fn simulator_event_to_quansheng_key(event: SimulatorEvent) -> Option<KeyEvent> {
     match event {
+        SimulatorEvent::MouseButtonDown {
+            mouse_btn: MouseButton::Right,
+            ..
+        } => Some(KeyEvent::KeyPressed(QuanshengKey::Ptt)),
+        SimulatorEvent::MouseButtonUp {
+            mouse_btn: MouseButton::Right,
+            ..
+        } => Some(KeyEvent::KeyReleased(QuanshengKey::Ptt)),
+
         SimulatorEvent::KeyDown { keycode, .. } => {
             keycode_to_quansheng_key(keycode).map(KeyEvent::KeyPressed)
         }
@@ -117,4 +147,23 @@ impl Bk4819Bus for DummyRadioBus {
         info!("read_reg_n: {:?}", reg);
         Ok(reg)
     }
+}
+
+pub struct DummyDelay;
+
+impl DelayNs for DummyDelay {
+    fn delay_ns(&mut self, ns: u32) {
+        std::thread::sleep(std::time::Duration::from_nanos(ns as u64));
+    }
+}
+
+pub fn draw_text_override(display: &mut SimulatorDisplay<BinaryColor>, text: &str) {
+    let font = MonoTextStyle::new(
+        &embedded_graphics::mono_font::ascii::FONT_8X13_BOLD,
+        BinaryColor::On,
+    );
+    display.clear(BinaryColor::Off).unwrap();
+    Text::new(text, Point::new(1, 13), font)
+        .draw(display)
+        .unwrap();
 }

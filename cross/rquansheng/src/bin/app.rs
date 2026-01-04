@@ -92,11 +92,6 @@ mod app {
 
     #[init(local = [poke_display_update: Signal<bool> = Signal::new()])]
     fn init(cx: init::Context) -> (Shared, Local) {
-        // TODO setup monotonic if used
-        // let sysclk = { /* clock setup + returning sysclk as an u32 */ };
-        // let token = rtic_monotonics::create_systick_token!();
-        // rtic_monotonics::systick::Systick::new(cx.core.SYST, sysclk, token);
-
         let pin_flashlight =
             Pin::new(Port::C, 3).into_push_pull_output(&cx.device.SYSCON, &cx.device.PORTCON);
         let pin_backlight =
@@ -252,7 +247,7 @@ mod app {
             cx.local.display.display.flush().unwrap();
 
             let left = cx.local.display_update_reader.wait();
-            let right = Mono::delay(1000.millis());
+            let right = Mono::delay(100.millis());
             embassy_futures::select::select(left, right).await;
         }
     }
@@ -280,14 +275,19 @@ mod app {
                 ptt_stable = pressed_now;
             }
 
-            let key = rquansheng::keyboard::Keyboard::init().poll(&mut cx.local.radio_delay);
+            let key = if ptt_stable {
+                Some(rquansheng::keyboard::QuanshengKey::Ptt)
+            } else {
+                rquansheng::keyboard::Keyboard::init().poll(&mut cx.local.radio_delay)
+            };
+
             let event = cx.local.keyboard_state.eat_key(key);
 
             // Do everything that touches BK4819 under one lock, then act on the GPIO audio path.
             let desired_audio_on = cx.shared.radio.lock(|r| {
-                r.eat_keyboard_event(event);
+                r.eat_keyboard_event(event, &mut cx.local.radio_delay);
 
-                r.eat_ptt(ptt_stable, &mut cx.local.radio_delay);
+                //r.eat_ptt(ptt_stable, &mut cx.local.radio_delay);
 
                 // Poll BK IRQ/status (C-style) and update internal state/LED/AF.
                 r.poll_interrupts().ok();
