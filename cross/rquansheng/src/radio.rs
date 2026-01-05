@@ -179,7 +179,7 @@ where
         let thresholds = default_squelch_thresholds(self.channel_cfg.freq);
         self.bk.setup_squelch(thresholds)?;
 
-        self.bk.write_register_n(
+        self.bk.write_register(
             Reg3F::new()
                 .with_squelch_found_en(true)
                 .with_squelch_lost_en(true),
@@ -224,7 +224,7 @@ where
         // - tones disabled
         // - modulation set (FM)
         // - TX is already enabled by `prepare_transmit()` (REG_30=0xC1FE), so just leave it running.
-        self.bk.write_register_old(Register_old::Reg70, 0x0000)?;
+        self.bk.write_register_raw(Register_old::Reg70, 0x0000)?;
         self.bk.set_af(AfType::Fm)?;
 
         Ok(())
@@ -248,16 +248,16 @@ where
         // while (ReadRegister(REG_0C) & 1) { WriteRegister(REG_02, 0); st=ReadRegister(REG_02); ... }
         // Safety cap: avoid spinning forever if the line is stuck.
         for _ in 0..8 {
-            let irq_req = self.bk.read_register_old(Register_old::Reg0C)? & 1;
+            let irq_req = self.bk.read_register_raw(Register_old::Reg0C)? & 1;
             if irq_req == 0 {
                 break;
             }
 
             // clear interrupts first (as in C)
-            self.bk.write_register_old(Register_old::Reg02, 0)?;
+            self.bk.write_register_raw(Register_old::Reg02, 0)?;
 
             // then read status bits
-            let st = self.bk.read_register_old(Register_old::Reg02)?;
+            let st = self.bk.read_register_raw(Register_old::Reg02)?;
 
             if (st & REG_02_SQUELCH_LOST) != 0 {
                 self.squelch_open = true;

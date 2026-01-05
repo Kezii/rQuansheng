@@ -48,11 +48,11 @@ pub enum Error<ScnE, SclE, SdaE> {
 pub trait Bk4819Bus {
     type Error;
 
-    fn write_reg(&mut self, reg: u8, value: u16) -> Result<(), Self::Error>;
-    fn read_reg(&mut self, reg: u8) -> Result<u16, Self::Error>;
+    fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error>;
+    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error>;
 
-    fn write_reg_n<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error>;
-    fn read_reg_n<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error>;
+    fn write_reg<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error>;
+    fn read_reg<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error>;
 }
 
 /// Bit-banged BK4819 bus implementation.
@@ -268,22 +268,22 @@ where
     type Error = Error<SCN::Error, SCL::Error, SDA::Error>;
 
     #[inline]
-    fn write_reg(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
+    fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
         self.write_reg_raw(reg, value)
     }
 
     #[inline]
-    fn read_reg(&mut self, reg: u8) -> Result<u16, Self::Error> {
+    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error> {
         self.read_reg_raw(reg)
     }
 
     #[inline]
-    fn write_reg_n<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error> {
+    fn write_reg<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error> {
         Bk4819BitBang::write_reg_n(self, reg)
     }
 
     #[inline]
-    fn read_reg_n<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error> {
+    fn read_reg<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error> {
         Bk4819BitBang::read_reg_n::<R>(self)
     }
 }
@@ -310,23 +310,23 @@ where
     BUS: Bk4819Bus,
 {
     #[inline]
-    pub fn write_reg(&mut self, reg: u8, value: u16) -> Result<(), BUS::Error> {
-        self.bus.write_reg(reg, value)
+    pub fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), BUS::Error> {
+        self.bus.write_reg_raw(reg, value)
     }
 
     #[inline]
-    pub fn read_reg(&mut self, reg: u8) -> Result<u16, BUS::Error> {
-        self.bus.read_reg(reg)
+    pub fn read_reg_raw(&mut self, reg: u8) -> Result<u16, BUS::Error> {
+        self.bus.read_reg_raw(reg)
     }
 
     #[inline]
-    pub fn write_reg_n<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), BUS::Error> {
-        self.bus.write_reg_n(reg)
+    pub fn write_reg<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), BUS::Error> {
+        self.bus.write_reg(reg)
     }
 
     #[inline]
-    pub fn read_reg_n<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, BUS::Error> {
-        self.bus.read_reg_n::<R>()
+    pub fn read_reg<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, BUS::Error> {
+        self.bus.read_reg::<R>()
     }
 
     /// Read-modify-write helper.
@@ -335,9 +335,9 @@ where
     where
         F: FnOnce(u16) -> u16,
     {
-        let cur = self.read_reg(reg)?;
+        let cur = self.read_reg_raw(reg)?;
         let next = f(cur);
-        self.write_reg(reg, next)?;
+        self.write_reg_raw(reg, next)?;
         Ok(next)
     }
 }
