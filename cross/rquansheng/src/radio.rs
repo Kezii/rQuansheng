@@ -13,7 +13,6 @@ use crate::bk4819::regs::Register_old;
 use crate::bk4819::{AfType, Bk4819Driver, FilterBandwidth, GpioPin};
 use crate::bk4819_bitbang::Bk4819Bus;
 use crate::bk4819_n::Reg3F;
-use crate::delay::DecentDelay;
 use crate::dialer::Dialer;
 use crate::display::RenderingMgr;
 use crate::keyboard::{KeyEvent, KeyboardState, QuanshengKey};
@@ -121,7 +120,7 @@ where
         self.enter_rx()
     }
 
-    pub fn eat_keyboard_event<D: DecentDelay>(&mut self, event: Option<KeyEvent>, delay: &mut D) {
+    pub fn eat_keyboard_event<D: DelayNs>(&mut self, event: Option<KeyEvent>, delay: &mut D) {
         if let Some(KeyEvent::KeyPressed(QuanshengKey::Ptt)) = event {
             let _ = self.enter_tx(delay);
         }
@@ -192,7 +191,7 @@ where
     }
 
     /// Enter TX mode (minimal port of the C sequencing used in `RADIO_SetTxParameters()`).
-    pub fn enter_tx<D: DecentDelay>(&mut self, delay: &mut D) -> Result<(), BUS::Error> {
+    pub fn enter_tx<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), BUS::Error> {
         self.mode = Mode::Tx;
         self.squelch_open = false;
 

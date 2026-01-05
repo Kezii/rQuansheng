@@ -2,7 +2,7 @@
 #![no_std]
 //#![feature(type_alias_impl_trait)]
 
-use rquansheng::{self as _, delay::DecentDelay}; // global logger + panicking-behavior + memory layout
+use rquansheng::{self as _}; // global logger + panicking-behavior + memory layout
 
 use dp30g030_hal as _;
 
@@ -61,7 +61,7 @@ mod app {
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
     use rtic_sync::signal::{Signal, SignalReader, SignalWriter};
 
-    use crate::{Mono, MonoDelay};
+    use crate::Mono;
 
     // Shared resources go here
     #[shared]
@@ -282,8 +282,9 @@ mod app {
             let event = cx.local.keyboard_state.eat_key(key);
 
             // Do everything that touches BK4819 under one lock, then act on the GPIO audio path.
+
             let desired_audio_on = cx.shared.radio.lock(|r| {
-                r.eat_keyboard_event(event, &mut MonoDelay);
+                r.eat_keyboard_event(event, &mut CycleDelay::new(48_000_000));
 
                 //r.eat_ptt(ptt_stable, &mut cx.local.radio_delay);
 
@@ -310,13 +311,5 @@ mod app {
 
             Mono::delay(10.millis()).await;
         }
-    }
-}
-
-pub struct MonoDelay;
-
-impl DecentDelay for MonoDelay {
-    async fn delay_ms(&mut self, ms: u32) {
-        Mono::delay(ms.millis()).await;
     }
 }

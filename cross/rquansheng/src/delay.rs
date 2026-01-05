@@ -44,7 +44,3 @@ impl DelayNs for CycleDelay {
         self.delay_us(ms.saturating_mul(1_000));
     }
 }
-
-pub trait DecentDelay {
-    async fn delay_ms(&mut self, ms: u32);
-}
