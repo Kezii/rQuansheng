@@ -1,42 +1,7 @@
+#![deprecated]
 //! BK4819 register map and bitfield helpers.
 //!
 //! Ported from `uv-k5-firmware-custom/driver/bk4819-regs.h`.
-
-#![allow(dead_code)]
-
-/// A named bitfield in a BK4819 register (read-modify-write helper).
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct RegisterSpec {
-    pub name: &'static str,
-    pub num: Register_old,
-    pub offset: u8,
-    pub mask: u16,
-    pub inc: u16,
-}
-
-pub const AFC_DISABLE: RegisterSpec = RegisterSpec {
-    name: "AFC Disable",
-    num: Register_old::Reg73,
-    offset: 4,
-    mask: 1,
-    inc: 1,
-};
-
-pub const AF_OUT_SELECT: RegisterSpec = RegisterSpec {
-    name: "AF Output Select",
-    num: Register_old::Reg47,
-    offset: 8,
-    mask: 0xF,
-    inc: 1,
-};
-
-pub const AF_DAC_GAIN: RegisterSpec = RegisterSpec {
-    name: "AF DAC Gain",
-    num: Register_old::Reg48,
-    offset: 0,
-    mask: 0xF,
-    inc: 1,
-};
 
 /// BK4819 register address.
 ///

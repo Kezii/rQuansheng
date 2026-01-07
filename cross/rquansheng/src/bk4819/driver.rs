@@ -258,15 +258,9 @@ where
 
     /// Port of `BK4819_SetAGC(enable)`.
     pub fn set_agc(&mut self, enable: bool) -> Result<(), BUS::Error> {
-        // REG_7E layout is modeled in `bk4819_n::Reg7E`:
-        // - bit15: AGC fix mode (1=fix => AGC off, 0=auto => AGC on)
-        // - bits14:12: AGC fix index
-        // Everything else (including undocumented bits) must be preserved.
-        let r7e: bk4819_n::Reg7E = self.read_register::<bk4819_n::Reg7E>()?;
+        let r7e = self.read_register::<bk4819_n::Reg7E>()?;
 
-        // C uses: if(!(regVal & (1<<15)) == enable) return;
-        let currently_enabled = !r7e.agc_fix_mode();
-        if currently_enabled == enable {
+        if r7e.agc_fix_mode() != enable {
             return Ok(());
         }
 
@@ -704,12 +698,24 @@ where
 
     // --- Tone / TX link / mute ---------------------------------------------
 
+    /// disable mic for tone transmission
     pub fn enter_tx_mute(&mut self) -> Result<(), BUS::Error> {
-        self.write_register_raw(Register_old::Reg50, 0xBB20)
-    }
+        self.write_register(
+            bk4819_n::Reg50::new()
+                .with_aftx_mute(true)
+                .with_undocumented(0b11101100100000),
+        )?;
 
+        Ok(())
+    }
+    /// enable mic
     pub fn exit_tx_mute(&mut self) -> Result<(), BUS::Error> {
-        self.write_register_raw(Register_old::Reg50, 0x3B20)
+        self.write_register(
+            bk4819_n::Reg50::new()
+                .with_aftx_mute(false)
+                .with_undocumented(0b11101100100000),
+        )?;
+        Ok(())
     }
 
     /// Port of `BK4819_EnableTXLink()`.
@@ -1125,16 +1131,16 @@ where
             REG_70_ENABLE_TONE1 | (66u16 << REG_70_SHIFT_TONE1_TUNING_GAIN),
         )?;
         self.enable_tx_link()?;
-        delay.delay_ms(50);
+        delay.delay_ms(10);
 
         self.write_register_raw(Register_old::Reg71, Self::scale_freq(tone1_hz as u16))?;
         self.exit_tx_mute()?;
-        delay.delay_ms(80);
+        delay.delay_ms(20);
         self.enter_tx_mute()?;
 
         self.write_register_raw(Register_old::Reg71, Self::scale_freq(tone2_hz as u16))?;
         self.exit_tx_mute()?;
-        delay.delay_ms(80);
+        delay.delay_ms(20);
         self.enter_tx_mute()?;
 
         self.write_register_raw(Register_old::Reg70, 0x0000)?;

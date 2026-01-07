@@ -113,4 +113,3 @@ fn find_struct_name(item: TokenStream) -> String {
     }
     panic!("#[address] can only be used on a `struct` item");
 }
-

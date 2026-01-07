@@ -10,7 +10,7 @@ use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
 use crate::bk4819::regs::Register_old;
-use crate::bk4819::{AfType, Bk4819Driver, FilterBandwidth, GpioPin};
+use crate::bk4819::{AfType, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk4819_bitbang::Bk4819Bus;
 use crate::bk4819_n::Reg3F;
 use crate::dialer::Dialer;
@@ -34,6 +34,8 @@ pub struct ChannelConfig {
     ///
     /// No EEPROM is available in this project, so we hardcode a sensible default.
     pub mic_gain: u8,
+
+    pub roger_mode: RogerMode,
 }
 
 impl Default for ChannelConfig {
@@ -43,6 +45,7 @@ impl Default for ChannelConfig {
             bandwidth: FilterBandwidth::Wide,
             tx_bias: 20,
             mic_gain: 16, // ~8.0 dB (matches the reference firmware's mid preset)
+            roger_mode: RogerMode::Off,
         }
     }
 }
@@ -126,6 +129,7 @@ where
         }
 
         if let Some(KeyEvent::KeyReleased(QuanshengKey::Ptt)) = event {
+            self.bk.play_roger(self.channel_cfg.roger_mode, delay).ok();
             let _ = self.enter_rx();
         }
 

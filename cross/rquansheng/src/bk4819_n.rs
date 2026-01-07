@@ -1261,10 +1261,11 @@ pub struct Reg4F {
 }
 
 /// REG_50: AF Tx mute control.
+#[address(0x50)]
 #[bitfield(u16)]
 pub struct Reg50 {
     #[bits(15)]
-    undocumented: u16,
+    pub undocumented: u16,
     /// Enable AF Tx Mute. 1=Mute;0=Normal.
     pub aftx_mute: bool,
 }
