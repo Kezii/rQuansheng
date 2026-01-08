@@ -148,9 +148,13 @@ impl RenderingMgr {
             &embedded_graphics::mono_font::ascii::FONT_6X12,
             BinaryColor::On,
         );
-        let smallfont = MonoTextStyle::new(&profont::PROFONT_10_POINT, BinaryColor::On);
-        let font = MonoTextStyle::new(&profont::PROFONT_14_POINT, BinaryColor::On);
-        let bigfont = MonoTextStyle::new(&profont::PROFONT_24_POINT, BinaryColor::On);
+
+        let font_10_digits =
+            MonoTextStyle::new(&crate::fonts_generated::PROFONT_10_POINT, BinaryColor::On);
+        let font_14_digits =
+            MonoTextStyle::new(&crate::fonts_generated::PROFONT_14_POINT, BinaryColor::On);
+        let font_24_digits =
+            MonoTextStyle::new(&crate::fonts_generated::PROFONT_24_POINT, BinaryColor::On);
 
         {
             let mut main_frequency = String::<8>::new();
@@ -170,8 +174,13 @@ impl RenderingMgr {
             } else {
                 ""
             };
-            Text::new(f6, Point::new(10, main_frequency_y), bigfont).draw(display)?;
-            Text::new(l2, Point::new(10 + 6 * 16, main_frequency_y - 1), font).draw(display)?;
+            Text::new(f6, Point::new(10, main_frequency_y), font_24_digits).draw(display)?;
+            Text::new(
+                l2,
+                Point::new(10 + 6 * 16, main_frequency_y - 1),
+                font_14_digits,
+            )
+            .draw(display)?;
             Rectangle::new(
                 Point::new(3 * 16 + 8, main_frequency_y - 2),
                 Size::new(2, 2),
@@ -209,7 +218,7 @@ impl RenderingMgr {
 
             let mut battery_string = String::<6>::new();
             write!(battery_string, "{}%", battery).ok();
-            Text::new(&battery_string, Point::new(100, 8), smallfont).draw(display)?;
+            Text::new(&battery_string, Point::new(100, 8), font_10_digits).draw(display)?;
         }
 
         self.historical_rssi.push(((rssi + 100) / 8) as u8);

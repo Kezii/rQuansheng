@@ -33,6 +33,5 @@ bitfield-struct = "0.12.1"
 rtic-sync = "1.4.0"
 #futures-util = {version = "0.3.31", default_features=false}
 embassy-futures = "0.1.2"
-profont = "0.7.0"
 log = "0.4.29"
 bk4819_reg_macros = { path = "../bk4819_reg_macros" }

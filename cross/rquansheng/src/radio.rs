@@ -72,7 +72,6 @@ where
     squelch_open: bool,
     rendering_mgr: RenderingMgr,
     dialer: Dialer<8>,
-    keyboard_state: KeyboardState,
 }
 
 impl<BUS> RadioController<BUS>
@@ -87,7 +86,6 @@ where
             squelch_open: false,
             rendering_mgr: RenderingMgr::default(),
             dialer: Dialer::default(),
-            keyboard_state: KeyboardState::default(),
         }
     }
 

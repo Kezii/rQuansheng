@@ -644,6 +644,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
+name = "font_generator"
+version = "0.1.0"
+dependencies = [
+ "embedded-graphics",
+ "profont",
+]
+
+[[package]]
 name = "form"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1362,7 +1370,6 @@ dependencies = [
  "nb 1.1.0",
  "panic-probe",
  "portable-atomic",
- "profont",
  "rtic",
  "rtic-monotonics",
  "rtic-sync",

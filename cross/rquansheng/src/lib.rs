@@ -13,7 +13,9 @@ pub mod bk4819_n;
 pub mod delay;
 pub mod dialer;
 pub mod display;
+pub mod fonts_generated;
 pub mod keyboard;
+pub mod messages;
 pub mod radio;
 
 use dp32g030 as _;
