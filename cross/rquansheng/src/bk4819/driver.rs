@@ -9,18 +9,18 @@ use crate::{
 };
 
 use super::regs::{
-    GpioPin as RegGpioPin, Register_old, REG_07_MODE_CDCSS, REG_07_MODE_CTC1, REG_07_MODE_CTC2,
-    REG_24_ENABLE, REG_24_SELECT_DTMF, REG_24_SHIFT_MAX_SYMBOLS, REG_24_SHIFT_THRESHOLD,
-    REG_24_SHIFT_UNKNOWN_15, REG_24_SHIFT_UNKNOWN_6, REG_30_DISABLE_MIC_ADC,
-    REG_30_DISABLE_PA_GAIN, REG_30_DISABLE_RX_DSP, REG_30_DISABLE_RX_LINK, REG_30_DISABLE_TX_DSP,
-    REG_30_DISABLE_UNKNOWN, REG_30_ENABLE_AF_DAC, REG_30_ENABLE_DISC_MODE, REG_30_ENABLE_PA_GAIN,
-    REG_30_ENABLE_PLL_VCO, REG_30_ENABLE_RX_DSP, REG_30_ENABLE_RX_LINK, REG_30_ENABLE_TX_DSP,
-    REG_30_ENABLE_UNKNOWN, REG_30_ENABLE_VCO_CALIB, REG_51_1050HZ_DETECTION,
-    REG_51_1050HZ_NO_DETECTION, REG_51_AUTO_CDCSS_BW_DISABLE, REG_51_AUTO_CDCSS_BW_ENABLE,
-    REG_51_AUTO_CTCSS_BW_DISABLE, REG_51_AUTO_CTCSS_BW_ENABLE, REG_51_CDCSS_23_BIT,
-    REG_51_DISABLE_CXCSS, REG_51_ENABLE_CXCSS, REG_51_GPIO6_PIN2_NORMAL, REG_51_MODE_CDCSS,
-    REG_51_MODE_CTCSS, REG_51_SHIFT_CXCSS_TX_GAIN1, REG_51_TX_CDCSS_POSITIVE, REG_70_ENABLE_TONE1,
-    REG_70_ENABLE_TONE2, REG_70_SHIFT_TONE1_TUNING_GAIN, REG_70_SHIFT_TONE2_TUNING_GAIN,
+    Register_old, REG_07_MODE_CDCSS, REG_07_MODE_CTC1, REG_07_MODE_CTC2, REG_24_ENABLE,
+    REG_24_SELECT_DTMF, REG_24_SHIFT_MAX_SYMBOLS, REG_24_SHIFT_THRESHOLD, REG_24_SHIFT_UNKNOWN_15,
+    REG_24_SHIFT_UNKNOWN_6, REG_30_DISABLE_MIC_ADC, REG_30_DISABLE_PA_GAIN, REG_30_DISABLE_RX_DSP,
+    REG_30_DISABLE_RX_LINK, REG_30_DISABLE_TX_DSP, REG_30_DISABLE_UNKNOWN, REG_30_ENABLE_AF_DAC,
+    REG_30_ENABLE_DISC_MODE, REG_30_ENABLE_PA_GAIN, REG_30_ENABLE_PLL_VCO, REG_30_ENABLE_RX_DSP,
+    REG_30_ENABLE_RX_LINK, REG_30_ENABLE_TX_DSP, REG_30_ENABLE_UNKNOWN, REG_30_ENABLE_VCO_CALIB,
+    REG_51_1050HZ_DETECTION, REG_51_1050HZ_NO_DETECTION, REG_51_AUTO_CDCSS_BW_DISABLE,
+    REG_51_AUTO_CDCSS_BW_ENABLE, REG_51_AUTO_CTCSS_BW_DISABLE, REG_51_AUTO_CTCSS_BW_ENABLE,
+    REG_51_CDCSS_23_BIT, REG_51_DISABLE_CXCSS, REG_51_ENABLE_CXCSS, REG_51_GPIO6_PIN2_NORMAL,
+    REG_51_MODE_CDCSS, REG_51_MODE_CTCSS, REG_51_SHIFT_CXCSS_TX_GAIN1, REG_51_TX_CDCSS_POSITIVE,
+    REG_70_ENABLE_TONE1, REG_70_ENABLE_TONE2, REG_70_SHIFT_TONE1_TUNING_GAIN,
+    REG_70_SHIFT_TONE2_TUNING_GAIN,
 };
 
 /// AF output selection (C enum `BK4819_AF_Type_t`).
@@ -72,7 +72,15 @@ pub enum CompanderMode {
 }
 
 /// GPIO pins (matches the C driver identifiers).
-pub type GpioPin = RegGpioPin;
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum GpioPin {
+    Gpio0Pin28RxEnable = 0,
+    Gpio1Pin29PaEnable = 1,
+    Gpio3Pin31UhfLna = 3,
+    Gpio4Pin32VhfLna = 4,
+    Gpio5Pin1Red = 5,
+    Gpio6Pin2Green = 6,
+}
 
 /// Roger beep mode (C references EEPROM setting).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -92,7 +100,7 @@ pub trait AudioPath {
 /// High-level driver, owning a `Bk4819` instance plus a small amount of state
 /// that was global in the C implementation (GPIO out shadow + rx idle flag).
 pub struct Bk4819Driver<BUS> {
-    bk: Bk4819<BUS>,
+    bitbang: Bk4819<BUS>,
     gpio_out_state: u16,
     /// If true, radio is considered asleep/not listening (C global `gRxIdleMode`).
     pub rx_idle_mode: bool,
@@ -109,7 +117,7 @@ where
 
     pub const fn new(bk: Bk4819<BUS>) -> Self {
         Self {
-            bk,
+            bitbang: bk,
             gpio_out_state: 0,
             rx_idle_mode: false,
         }
@@ -117,43 +125,32 @@ where
 
     #[inline]
     pub fn free(self) -> Bk4819<BUS> {
-        self.bk
+        self.bitbang
     }
 
     #[inline]
     pub fn bk_mut(&mut self) -> &mut Bk4819<BUS> {
-        &mut self.bk
+        &mut self.bitbang
     }
 
     #[inline]
     #[deprecated]
     pub fn read_register_raw(&mut self, reg: Register_old) -> Result<u16, BUS::Error> {
-        self.bk.read_reg_raw(reg.as_u8())
+        self.bitbang.read_reg_raw(reg.as_u8())
     }
 
     #[inline]
     #[deprecated]
     pub fn write_register_raw(&mut self, reg: Register_old, value: u16) -> Result<(), BUS::Error> {
-        self.bk.write_reg_raw(reg.as_u8(), value)
+        self.bitbang.write_reg_raw(reg.as_u8(), value)
     }
 
     pub fn __internal_write_register_raw(&mut self, reg: u8, value: u16) -> Result<(), BUS::Error> {
-        self.bk.write_reg_raw(reg, value)
+        self.bitbang.write_reg_raw(reg, value)
     }
 
     pub fn __internal_read_register_raw(&mut self, reg: u8) -> Result<u16, BUS::Error> {
-        self.bk.read_reg_raw(reg)
-    }
-
-    pub fn write_register<R: bk4819_n::Bk4819Register>(
-        &mut self,
-        reg: R,
-    ) -> Result<(), BUS::Error> {
-        self.bk.write_reg(reg)
-    }
-
-    pub fn read_register<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, BUS::Error> {
-        self.bk.read_reg::<R>()
+        self.bitbang.read_reg_raw(reg)
     }
 
     /// Port of `scale_freq()` from the C firmware.
@@ -170,11 +167,13 @@ where
     pub fn init(&mut self) -> Result<(), BUS::Error> {
         use bk4819_n::{Reg00, Reg36, Reg37};
         // Soft reset
-        self.write_register(Reg00::new().with_soft_reset(bk4819_n::Reg00SoftReset::Reset))?;
-        self.write_register(Reg00::new().with_soft_reset(bk4819_n::Reg00SoftReset::Normal))?;
+        self.bitbang
+            .write_reg(Reg00::new().with_soft_reset(bk4819_n::Reg00SoftReset::Reset))?;
+        self.bitbang
+            .write_reg(Reg00::new().with_soft_reset(bk4819_n::Reg00SoftReset::Normal))?;
 
         //self.write_register(Register::Reg37, 0x1D0F)?; // 0b0 001 1101 00001111
-        self.write_register(
+        self.bitbang.write_reg(
             Reg37::new()
                 .with_bg_en(true)
                 .with_xtal_en(true)
@@ -186,14 +185,15 @@ where
                 .with_dsp_volt(1),
         )?;
 
-        self.write_register(Reg36::new().with_pa_gain2(0b010).with_pa_gain1(0b100))?;
+        self.bitbang
+            .write_reg(Reg36::new().with_pa_gain2(0b010).with_pa_gain1(0b100))?;
 
         self.init_agc(false)?;
         self.set_agc(true)?;
 
         // REG_19: <15> MIC AGC 1=disable 0=enable
         //self.write_register(Register::Reg19, 0b0001_0000_0100_0001)?;
-        self.write_register(
+        self.bitbang.write_reg(
             bk4819_n::Reg19::new()
                 .with_mic_agc_disable(false)
                 .with_undocumented_1(0b001000001000001),
@@ -207,7 +207,7 @@ where
 
         // REG_48 .. RX AF level (see C comments)
         //self.write_register(Register::Reg48, (11u16 << 12) | (58u16 << 4) | 8u16)?;
-        self.write_register(
+        self.bitbang.write_reg(
             bk4819_n::Reg48::new()
                 .with_af_dac_gain(8)
                 .with_afrx_gain2(58)
@@ -220,7 +220,7 @@ where
             111, 107, 103, 98, 80, 71, 58, 44, 65, 55, 37, 23, 228, 203, 181, 159,
         ];
         for (i, &c) in DTMF_COEFFS.iter().enumerate() {
-            self.write_register(
+            self.bitbang.write_reg(
                 bk4819_n::Reg09::new()
                     .with_coefficient(c as u8)
                     .with_symbol_number(i as u8),
@@ -228,24 +228,25 @@ where
         }
 
         //self.write_register(crate::bk4819::regs::Register::Reg1F, 0x5454)?;
-        self.write_register(
+        self.bitbang.write_reg(
             bk4819_n::Reg1F::new()
                 .with_pll_cp_bit(4)
                 .with_undocumented(0b10101000101),
         )?;
 
         //self.write_register(Register::Reg3E, 0xA037)?;
-        self.write_register(bk4819_n::Reg3E::new().with_band_thresh(0xA037))?;
+        self.bitbang
+            .write_reg(bk4819_n::Reg3E::new().with_band_thresh(0xA037))?;
 
         self.gpio_out_state = 0x9000;
         //self.write_register(Register::Reg33, self.gpio_out_state)?;
-        self.write_register(
+        self.bitbang.write_reg(
             bk4819_n::Reg33::new()
                 .with_gpio_out_disable((self.gpio_out_state >> 8) as u8)
                 .with_gpio_out_value(0x00),
         )?;
         //self.write_register(Register::Reg3F, 0x0000)?;
-        self.write_register(bk4819_n::Reg3F::new())?;
+        self.bitbang.write_reg(bk4819_n::Reg3F::new())?;
 
         Ok(())
     }
@@ -255,7 +256,7 @@ where
     /// `gain` is in 0.5 dB/step, 0..=31.
     pub fn set_mic_gain(&mut self, gain: u8) -> Result<(), BUS::Error> {
         //self.write_register(Register::Reg7D, 0xE940 | gain)
-        self.write_register(
+        self.bitbang.write_reg(
             bk4819_n::Reg7D::new()
                 .with_mic_sens(gain)
                 .with_undocumented(0b11101001010),
@@ -266,7 +267,7 @@ where
 
     /// Port of `BK4819_SetAGC(enable)`.
     pub fn set_agc(&mut self, enable: bool) -> Result<(), BUS::Error> {
-        let r7e = self.read_register::<bk4819_n::Reg7E>()?;
+        let r7e = self.bitbang.read_reg::<bk4819_n::Reg7E>()?;
 
         if r7e.agc_fix_mode() != enable {
             return Ok(());
@@ -276,7 +277,7 @@ where
             .with_agc_fix_mode(!enable) // 0=auto (AGC on), 1=fix (AGC off)
             .with_agc_fix_index(3); // fix index (matches reference firmware)
 
-        self.write_register(next)
+        self.bitbang.write_reg(next)
     }
 
     /// Port of `BK4819_InitAGC(amModulation)`.
@@ -441,8 +442,10 @@ where
     pub fn set_frequency(&mut self, frequency_hz: u32) -> Result<(), BUS::Error> {
         let frequency_10hz = frequency_hz / 10;
 
-        self.write_register(bk4819_n::Reg38::new().with_freq_lo(frequency_10hz as u16))?;
-        self.write_register(bk4819_n::Reg39::new().with_freq_hi((frequency_10hz >> 16) as u16))?;
+        self.bitbang
+            .write_reg(bk4819_n::Reg38::new().with_freq_lo(frequency_10hz as u16))?;
+        self.bitbang
+            .write_reg(bk4819_n::Reg39::new().with_freq_hi((frequency_10hz >> 16) as u16))?;
         Ok(())
     }
 
@@ -708,7 +711,7 @@ where
 
     /// disable mic for tone transmission
     pub fn enter_tx_mute(&mut self) -> Result<(), BUS::Error> {
-        self.write_register(
+        self.bitbang.write_reg(
             bk4819_n::Reg50::new()
                 .with_aftx_mute(true)
                 .with_undocumented(0b11101100100000),
@@ -718,7 +721,7 @@ where
     }
     /// enable mic
     pub fn exit_tx_mute(&mut self) -> Result<(), BUS::Error> {
-        self.write_register(
+        self.bitbang.write_reg(
             bk4819_n::Reg50::new()
                 .with_aftx_mute(false)
                 .with_undocumented(0b11101100100000),
@@ -919,7 +922,7 @@ where
     // --- Indicators / measurements -----------------------------------------
 
     pub fn get_rssi(&mut self) -> Result<u16, BUS::Error> {
-        let r67: Reg67 = self.read_register::<Reg67>()?;
+        let r67: Reg67 = self.bitbang.read_reg::<Reg67>()?;
         Ok(r67.rssi())
     }
 
@@ -959,7 +962,7 @@ where
         } else {
             (Register_old::Reg10.as_u8()).wrapping_add(gain_idx as u8)
         };
-        let agc_gain_reg = self.bk.read_reg_raw(gain_reg_addr)?;
+        let agc_gain_reg = self.bitbang.read_reg_raw(gain_reg_addr)?;
 
         let pga = (agc_gain_reg & 0b111) as usize;
         let mixer = ((agc_gain_reg >> 3) & 0b11) as usize;

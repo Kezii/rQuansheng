@@ -92,18 +92,6 @@ impl Register_old {
     }
 }
 
-/// GPIO pins as exposed by the C driver.
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum GpioPin {
-    Gpio0Pin28RxEnable = 0,
-    Gpio1Pin29PaEnable = 1,
-    Gpio3Pin31UhfLna = 3,
-    Gpio4Pin32VhfLna = 4,
-    Gpio5Pin1Red = 5,
-    Gpio6Pin2Green = 6,
-}
-
 // --- REG_07 ---
 
 pub const REG_07_SHIFT_FREQUENCY_MODE: u16 = 13;

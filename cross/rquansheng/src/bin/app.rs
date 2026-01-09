@@ -71,10 +71,7 @@ mod app {
         TooLong,
     }
 
-    async fn read_until_zero<R>(
-        rx: &mut R,
-        max_len: usize,
-    ) -> Result<Vec<u8, 64>, ReadLineError>
+    async fn read_until_zero<R>(rx: &mut R, max_len: usize) -> Result<Vec<u8, 64>, ReadLineError>
     where
         R: AsyncRead,
     {
@@ -143,7 +140,7 @@ mod app {
         let sda = Dp32g030BidiPin::new(Port::C, 2, &cx.device.SYSCON, &cx.device.PORTCON).unwrap();
 
         let delay_bb = CycleDelay::new(48_000_000);
-        let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb).unwrap();
+        let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb);
         let bk = Bk4819Driver::new(Bk4819::new(bus));
 
         let mut radio = RadioController::new(bk);

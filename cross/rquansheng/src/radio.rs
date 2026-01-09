@@ -180,7 +180,7 @@ where
         let thresholds = default_squelch_thresholds(self.channel_cfg.freq);
         self.bk.setup_squelch(thresholds)?;
 
-        self.bk.write_register(
+        self.bk.bk_mut().write_reg(
             Reg3F::new()
                 .with_squelch_found_en(true)
                 .with_squelch_lost_en(true),

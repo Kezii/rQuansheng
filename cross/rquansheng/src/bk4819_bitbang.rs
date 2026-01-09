@@ -25,23 +25,12 @@ use dp30g030_hal::gpio::Port;
 /// The BK4819 uses a single data pin for both MOSI and MISO. During reads the host must:
 /// - enable the input buffer
 /// - switch the pin direction to input
-/// and then restore output mode afterwards.
+///   and then restore output mode afterwards.
 pub trait BidiPin: OutputPin + InputPin {
     /// Switch the pin to input mode (and enable input buffer if applicable).
     fn set_to_input(&mut self);
     /// Switch the pin to output mode (and optionally disable input buffer).
     fn set_to_output(&mut self);
-}
-
-/// Errors returned by the bit-bang bus.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Error<ScnE, SclE, SdaE> {
-    /// Error driving SCN/CS.
-    Scn(ScnE),
-    /// Error driving SCL/CLK.
-    Scl(SclE),
-    /// Error driving/reading SDA/SDIO.
-    Sda(SdaE),
 }
 
 /// A minimal bus trait for BK4819 register access.
@@ -59,6 +48,9 @@ pub trait Bk4819Bus {
 ///
 /// `SCN` and `SCL` are standard push-pull outputs.
 /// `SDA` must be bidirectional (`BidiPin`).
+///
+/// gpio operations do return Result, but the error type is infallible
+/// so we don't waste time handling errors in this module
 pub struct Bk4819BitBang<SCN, SCL, SDA, D> {
     scn: SCN,
     scl: SCL,
@@ -79,25 +71,20 @@ where
     ///
     /// By default this uses a 1µs bit delay, matching the reference firmware.
     /// Lines are left in the idle state (SCN=1, SCL=1, SDA=1, SDA as output).
-    pub fn new(
-        mut scn: SCN,
-        mut scl: SCL,
-        mut sda: SDA,
-        delay: D,
-    ) -> Result<Self, Error<SCN::Error, SCL::Error, SDA::Error>> {
+    pub fn new(mut scn: SCN, mut scl: SCL, mut sda: SDA, delay: D) -> Self {
         // Idle state: high/high/high.
-        scn.set_high().map_err(Error::Scn)?;
-        scl.set_high().map_err(Error::Scl)?;
+        let _ = scn.set_high();
+        let _ = scl.set_high();
         sda.set_to_output();
-        sda.set_high().map_err(Error::Sda)?;
+        let _ = sda.set_high();
 
-        Ok(Self {
+        Self {
             scn,
             scl,
             sda,
             delay,
             t_us: 1,
-        })
+        }
     }
 
     /// Set the delay used by the waveform, in microseconds.
@@ -119,142 +106,123 @@ where
         self.delay.delay_us(self.t_us);
     }
 
-    fn write_u8(&mut self, mut data: u8) -> Result<(), Error<SCN::Error, SCL::Error, SDA::Error>> {
+    fn write_u8(&mut self, mut data: u8) {
         self.sda.set_to_output();
-        self.scl.set_low().map_err(Error::Scl)?;
+        let _ = self.scl.set_low();
 
         for _ in 0..8 {
             if (data & 0x80) == 0 {
-                self.sda.set_low().map_err(Error::Sda)?;
+                let _ = self.sda.set_low();
             } else {
-                self.sda.set_high().map_err(Error::Sda)?;
+                let _ = self.sda.set_high();
             }
 
             self.dly();
-            self.scl.set_high().map_err(Error::Scl)?;
+            let _ = self.scl.set_high();
             self.dly();
 
             data <<= 1;
-            self.scl.set_low().map_err(Error::Scl)?;
+            let _ = self.scl.set_low();
             self.dly();
         }
-
-        Ok(())
     }
 
-    fn write_u16(
-        &mut self,
-        mut data: u16,
-    ) -> Result<(), Error<SCN::Error, SCL::Error, SDA::Error>> {
+    fn write_u16(&mut self, mut data: u16) {
         self.sda.set_to_output();
-        self.scl.set_low().map_err(Error::Scl)?;
+        let _ = self.scl.set_low();
 
         for _ in 0..16 {
             if (data & 0x8000) == 0 {
-                self.sda.set_low().map_err(Error::Sda)?;
+                let _ = self.sda.set_low();
             } else {
-                self.sda.set_high().map_err(Error::Sda)?;
+                let _ = self.sda.set_high();
             }
 
             self.dly();
-            self.scl.set_high().map_err(Error::Scl)?;
+            let _ = self.scl.set_high();
 
             data <<= 1;
 
             self.dly();
-            self.scl.set_low().map_err(Error::Scl)?;
+            let _ = self.scl.set_low();
             self.dly();
         }
-
-        Ok(())
     }
 
-    fn read_u16(&mut self) -> Result<u16, Error<SCN::Error, SCL::Error, SDA::Error>> {
+    fn read_u16(&mut self) -> u16 {
         self.sda.set_to_input();
         self.dly();
 
         let mut value: u16 = 0;
         for _ in 0..16 {
             value <<= 1;
-            if self.sda.is_high().map_err(Error::Sda)? {
+            if let Ok(true) = self.sda.is_high() {
                 value |= 1;
             }
 
-            self.scl.set_high().map_err(Error::Scl)?;
+            let _ = self.scl.set_high();
             self.dly();
-            self.scl.set_low().map_err(Error::Scl)?;
+            let _ = self.scl.set_low();
             self.dly();
         }
 
         self.sda.set_to_output();
-        Ok(value)
+        value
     }
 
     /// Low-level register read, raw `u8` register address.
     ///
     /// Mirrors `BK4819_ReadRegister()` in the C reference.
-    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Error<SCN::Error, SCL::Error, SDA::Error>> {
-        self.scn.set_high().map_err(Error::Scn)?;
-        self.scl.set_low().map_err(Error::Scl)?;
+    fn read_reg_raw(&mut self, reg: u8) -> u16 {
+        let _ = self.scn.set_high();
+        let _ = self.scl.set_low();
         self.dly();
 
-        self.scn.set_low().map_err(Error::Scn)?;
-        self.write_u8(reg | 0x80)?;
-        let value = self.read_u16()?;
-        self.scn.set_high().map_err(Error::Scn)?;
+        let _ = self.scn.set_low();
+        self.write_u8(reg | 0x80);
+        let value = self.read_u16();
+        let _ = self.scn.set_high();
 
         self.dly();
 
         // Return to idle.
-        self.scl.set_high().map_err(Error::Scl)?;
+        let _ = self.scl.set_high();
         self.sda.set_to_output();
-        self.sda.set_high().map_err(Error::Sda)?;
+        let _ = self.sda.set_high();
 
-        Ok(value)
+        value
     }
 
     /// Low-level register write, raw `u8` register address.
     ///
     /// Mirrors `BK4819_WriteRegister()` in the C reference.
-    fn write_reg_raw(
-        &mut self,
-        reg: u8,
-        data: u16,
-    ) -> Result<(), Error<SCN::Error, SCL::Error, SDA::Error>> {
-        self.scn.set_high().map_err(Error::Scn)?;
-        self.scl.set_low().map_err(Error::Scl)?;
+    fn write_reg_raw(&mut self, reg: u8, data: u16) {
+        let _ = self.scn.set_high();
+        let _ = self.scl.set_low();
         self.dly();
 
-        self.scn.set_low().map_err(Error::Scn)?;
-        self.write_u8(reg)?;
+        let _ = self.scn.set_low();
+        self.write_u8(reg);
         self.dly();
-        self.write_u16(data)?;
+        self.write_u16(data);
         self.dly();
 
-        self.scn.set_high().map_err(Error::Scn)?;
+        let _ = self.scn.set_high();
         self.dly();
 
         // Return to idle.
-        self.scl.set_high().map_err(Error::Scl)?;
+        let _ = self.scl.set_high();
         self.sda.set_to_output();
-        self.sda.set_high().map_err(Error::Sda)?;
-        Ok(())
+        let _ = self.sda.set_high();
     }
 
-    pub fn write_reg_n<R: bk4819_n::Bk4819Register>(
-        &mut self,
-        reg: R,
-    ) -> Result<(), Error<SCN::Error, SCL::Error, SDA::Error>> {
-        self.write_reg_raw(R::ADDRESS, reg.serialize())?;
-
-        Ok(())
+    pub fn write_reg_n<R: bk4819_n::Bk4819Register>(&mut self, reg: R) {
+        self.write_reg_raw(R::ADDRESS, reg.serialize());
     }
 
-    pub fn read_reg_n<R: bk4819_n::Bk4819Register>(
-        &mut self,
-    ) -> Result<R, Error<SCN::Error, SCL::Error, SDA::Error>> {
-        let value = self.read_reg_raw(R::ADDRESS)?;
-        Ok(<R as bk4819_n::Bk4819Register>::deserialize(value))
+    pub fn read_reg_n<R: bk4819_n::Bk4819Register>(&mut self) -> R {
+        let value = self.read_reg_raw(R::ADDRESS);
+        <R as bk4819_n::Bk4819Register>::deserialize(value)
     }
 }
 
@@ -265,26 +233,30 @@ where
     SDA: BidiPin,
     D: DelayNs,
 {
-    type Error = Error<SCN::Error, SCL::Error, SDA::Error>;
+    type Error = Infallible;
 
     #[inline]
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
-        self.write_reg_raw(reg, value)
+        self.write_reg_raw(reg, value);
+        Ok(())
     }
 
     #[inline]
     fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error> {
-        self.read_reg_raw(reg)
+        let value = self.read_reg_raw(reg);
+        Ok(value)
     }
 
     #[inline]
     fn write_reg<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error> {
-        Bk4819BitBang::write_reg_n(self, reg)
+        Bk4819BitBang::write_reg_n(self, reg);
+        Ok(())
     }
 
     #[inline]
     fn read_reg<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error> {
-        Bk4819BitBang::read_reg_n::<R>(self)
+        let value = Bk4819BitBang::read_reg_n::<R>(self);
+        Ok(value)
     }
 }
 
