@@ -23,28 +23,6 @@ use super::regs::{
     REG_70_SHIFT_TONE2_TUNING_GAIN,
 };
 
-/// AF output selection (C enum `BK4819_AF_Type_t`).
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum AfType {
-    Mute = 0,
-    Fm = 1,
-    Alarm = 2,
-    Beep = 3,
-    Baseband1 = 4,
-    Baseband2 = 5,
-    Ctco = 6,
-    Am = 7,
-    Fsko = 8,
-    Unknown3 = 9,
-    Unknown4 = 10,
-    Unknown5 = 11,
-    Unknown6 = 12,
-    Unknown7 = 13,
-    Unknown8 = 14,
-    Unknown9 = 15,
-}
-
 /// RX/TX bandwidth preset (C enum `BK4819_FilterBandwidth_t`).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum FilterBandwidth {
@@ -74,12 +52,12 @@ pub enum CompanderMode {
 /// GPIO pins (matches the C driver identifiers).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum GpioPin {
-    Gpio0Pin28RxEnable = 0,
-    Gpio1Pin29PaEnable = 1,
-    Gpio3Pin31UhfLna = 3,
-    Gpio4Pin32VhfLna = 4,
-    Gpio5Pin1Red = 5,
-    Gpio6Pin2Green = 6,
+    Gpio0RxEnable,
+    Gpio1PaEnable,
+    Gpio3UhfLna,
+    Gpio4VhfLna,
+    Gpio5Red,
+    Gpio6Green,
 }
 
 /// Roger beep mode (C references EEPROM setting).
@@ -101,7 +79,7 @@ pub trait AudioPath {
 /// that was global in the C implementation (GPIO out shadow + rx idle flag).
 pub struct Bk4819Driver<BUS> {
     bitbang: Bk4819<BUS>,
-    gpio_out_state: u16,
+    gpio_out_state: Reg33,
     /// If true, radio is considered asleep/not listening (C global `gRxIdleMode`).
     pub rx_idle_mode: bool,
 }
@@ -118,7 +96,7 @@ where
     pub const fn new(bk: Bk4819<BUS>) -> Self {
         Self {
             bitbang: bk,
-            gpio_out_state: 0,
+            gpio_out_state: Reg33::new(),
             rx_idle_mode: false,
         }
     }
@@ -237,13 +215,10 @@ where
         self.bitbang
             .write_reg(Reg3E::new().with_band_thresh(0xA037))?;
 
-        self.gpio_out_state = 0x9000;
-        //self.write_register(Register::Reg33, self.gpio_out_state)?;
-        self.bitbang.write_reg(
-            Reg33::new()
-                .with_gpio_out_disable((self.gpio_out_state >> 8) as u8)
-                .with_gpio_out_value(0x00),
-        )?;
+        // Preserve legacy initialization exactly (raw value 0x9000).
+        // This sets the GPIO output-disable mask as in the original C port.
+        self.gpio_out_state = Reg33::from(0x9000);
+        self.bitbang.write_reg(self.gpio_out_state)?;
         //self.write_register(Register::Reg3F, 0x0000)?;
         self.bitbang.write_reg(Reg3F::new())?;
 
@@ -302,13 +277,16 @@ where
 
     /// Port of `BK4819_ToggleGpioOut(pin, set)`.
     pub fn toggle_gpio_out(&mut self, pin: GpioPin, set: bool) -> Result<(), BUS::Error> {
-        let bit = 0x40u16 >> (pin as u8);
-        if set {
-            self.gpio_out_state |= bit;
-        } else {
-            self.gpio_out_state &= !bit;
-        }
-        self.write_register_raw(Register_old::Reg33, self.gpio_out_state)
+        self.gpio_out_state = match pin {
+            GpioPin::Gpio0RxEnable => self.gpio_out_state.with_gpio0_out(set),
+            GpioPin::Gpio1PaEnable => self.gpio_out_state.with_gpio1_out(set),
+            GpioPin::Gpio3UhfLna => self.gpio_out_state.with_gpio3_out(set),
+            GpioPin::Gpio4VhfLna => self.gpio_out_state.with_gpio4_out(set),
+            GpioPin::Gpio5Red => self.gpio_out_state.with_gpio5_out(set),
+            GpioPin::Gpio6Green => self.gpio_out_state.with_gpio6_out(set),
+        };
+
+        self.bitbang.write_reg(self.gpio_out_state)
     }
 
     // --- CTCSS / CDCSS ------------------------------------------------------
@@ -448,21 +426,26 @@ where
         Ok(())
     }
 
-    /// Port of `BK4819_PickRXFilterPathBasedOnFrequency(freq)`.
     pub fn pick_rx_filter_path_based_on_frequency(
         &mut self,
         frequency_hz: u32,
     ) -> Result<(), BUS::Error> {
         if frequency_hz < 280_000_000 {
-            self.toggle_gpio_out(GpioPin::Gpio4Pin32VhfLna, true)?;
-            self.toggle_gpio_out(GpioPin::Gpio3Pin31UhfLna, false)?;
-        } else if frequency_hz == 0xFFFF_FFFF {
-            self.toggle_gpio_out(GpioPin::Gpio4Pin32VhfLna, false)?;
-            self.toggle_gpio_out(GpioPin::Gpio3Pin31UhfLna, false)?;
+            // VHF
+            self.toggle_gpio_out(GpioPin::Gpio4VhfLna, true)?;
+            self.toggle_gpio_out(GpioPin::Gpio3UhfLna, false)?;
         } else {
-            self.toggle_gpio_out(GpioPin::Gpio4Pin32VhfLna, false)?;
-            self.toggle_gpio_out(GpioPin::Gpio3Pin31UhfLna, true)?;
+            // UHF
+            self.toggle_gpio_out(GpioPin::Gpio4VhfLna, false)?;
+            self.toggle_gpio_out(GpioPin::Gpio3UhfLna, true)?;
         }
+        Ok(())
+    }
+
+    pub fn rx_filter_off(&mut self) -> Result<(), BUS::Error> {
+        // OFF
+        self.toggle_gpio_out(GpioPin::Gpio4VhfLna, false)?;
+        self.toggle_gpio_out(GpioPin::Gpio3UhfLna, false)?;
         Ok(())
     }
 
@@ -495,15 +478,17 @@ where
             ((thresholds.open_rssi as u16) << 8) | (thresholds.close_rssi as u16),
         )?;
 
-        self.set_af(AfType::Mute)?;
+        self.set_af(AfOutSel::Mute)?;
         self.rx_turn_on()
     }
 
-    /// Port of `BK4819_SetAF(AF)`.
-    pub fn set_af(&mut self, af: AfType) -> Result<(), BUS::Error> {
-        self.write_register_raw(
-            Register_old::Reg47,
-            (6u16 << 12) | ((af as u16) << 8) | (1u16 << 6),
+    pub fn set_af(&mut self, af: AfOutSel) -> Result<(), BUS::Error> {
+        self.bitbang.write_reg(
+            Reg47::new()
+                .with_af_output_selection(af)
+                .with_undocumented_0(1 << 5)
+                .with_af_out_invert(true)
+                .with_undocumented_2(1),
         )
     }
 
@@ -650,9 +635,9 @@ where
         self.enable_dtmf()?;
         self.enter_tx_mute()?;
         self.set_af(if local_loopback {
-            AfType::Beep
+            AfOutSel::BeepTx
         } else {
-            AfType::Mute
+            AfOutSel::Mute
         })?;
         self.write_register_raw(
             Register_old::Reg70,
@@ -666,7 +651,7 @@ where
 
     pub fn exit_dtmf_tx(&mut self, keep_muted: bool) -> Result<(), BUS::Error> {
         self.enter_tx_mute()?;
-        self.set_af(AfType::Mute)?;
+        self.set_af(AfOutSel::Mute)?;
         self.write_register_raw(Register_old::Reg70, 0x0000)?;
         self.disable_dtmf()?;
         self.write_register_raw(Register_old::Reg30, 0xC1FE)?;
@@ -753,7 +738,7 @@ where
     ) -> Result<(), BUS::Error> {
         let mut cfg: u16 = REG_70_ENABLE_TONE1;
         self.enter_tx_mute()?;
-        self.set_af(AfType::Beep)?;
+        self.set_af(AfOutSel::BeepTx)?;
 
         let gain: u16 = if !tuning_gain_switch { 96 } else { 28 };
         cfg |= gain << REG_70_SHIFT_TONE1_TUNING_GAIN;
@@ -780,9 +765,9 @@ where
         self.enter_tx_mute()?;
         if play_speaker {
             let _ = audio.on();
-            self.set_af(AfType::Beep)?;
+            self.set_af(AfOutSel::BeepTx)?;
         } else {
-            self.set_af(AfType::Mute)?;
+            self.set_af(AfOutSel::Mute)?;
         }
 
         self.write_register_raw(
@@ -801,7 +786,7 @@ where
 
         if play_speaker {
             let _ = audio.off();
-            self.set_af(AfType::Mute)?;
+            self.set_af(AfOutSel::Mute)?;
         }
 
         self.write_register_raw(Register_old::Reg70, 0x0000)?;
@@ -823,9 +808,9 @@ where
         )?;
         self.write_register_raw(Register_old::Reg71, Self::scale_freq(frequency_hz as u16))?;
         self.set_af(if local_loopback {
-            AfType::Beep
+            AfOutSel::BeepTx
         } else {
-            AfType::Mute
+            AfOutSel::Mute
         })?;
         self.enable_tx_link()?;
         delay.delay_ms(50);
@@ -845,7 +830,7 @@ where
 
     pub fn turns_off_tones_turns_on_rx(&mut self) -> Result<(), BUS::Error> {
         self.write_register_raw(Register_old::Reg70, 0x0000)?;
-        self.set_af(AfType::Mute)?;
+        self.set_af(AfOutSel::Mute)?;
         self.exit_tx_mute()?;
         self.write_register_raw(Register_old::Reg30, 0x0000)?;
         self.write_register_raw(
@@ -860,7 +845,7 @@ where
     }
 
     pub fn exit_bypass(&mut self) -> Result<(), BUS::Error> {
-        self.set_af(AfType::Mute)?;
+        self.set_af(AfOutSel::Mute)?;
         let reg_val = self.read_register_raw(Register_old::Reg7E)?;
         self.write_register_raw(
             Register_old::Reg7E,
@@ -887,7 +872,7 @@ where
 
     pub fn conditional_rx_turn_on_and_gpio0_enable(&mut self) -> Result<(), BUS::Error> {
         if self.rx_idle_mode {
-            self.toggle_gpio_out(GpioPin::Gpio0Pin28RxEnable, true)?;
+            self.toggle_gpio_out(GpioPin::Gpio0RxEnable, true)?;
             self.rx_turn_on()?;
         }
         Ok(())
@@ -1135,7 +1120,7 @@ where
         let tone2_hz: u32 = 1310;
 
         self.enter_tx_mute()?;
-        self.set_af(AfType::Mute)?;
+        self.set_af(AfOutSel::Mute)?;
         self.write_register_raw(
             Register_old::Reg70,
             REG_70_ENABLE_TONE1 | (66u16 << REG_70_SHIFT_TONE1_TUNING_GAIN),
@@ -1161,7 +1146,7 @@ where
     fn play_roger_mdc<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), BUS::Error> {
         const FSK_ROGER_TABLE: [u16; 7] = [0xF1A2, 0x7446, 0x61A4, 0x6544, 0x4E8A, 0xE044, 0xEA84];
 
-        self.set_af(AfType::Mute)?;
+        self.set_af(AfOutSel::Mute)?;
         // RogerMDC_Configuration table from C
         self.write_register_raw(Register_old::Reg58, 0x37C3)?;
         self.write_register_raw(Register_old::Reg72, 0x3065)?;

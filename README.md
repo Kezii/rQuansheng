@@ -21,7 +21,7 @@ rQuansheng can run on a normal PC, controlling the radio chip on a physical devi
 1. flash the rQuansheng firmware
 1. CTRL+C at the flasher logcat
 1. go to the `host_sw` directory
-1. run `RUST_LOG=INFO cargo run --release --bin host_sw -- --serial /dev/ttyUSB0`
+1. run `RUST_LOG=INFO cargo run --release --bin emulator -- --serial /dev/ttyUSB0`
 
 
 ![photo](docs/screenshot.jpg)

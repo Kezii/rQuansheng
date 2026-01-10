@@ -2,7 +2,6 @@ use core::cmp::min;
 
 use cortex_m::asm;
 use embedded_hal::delay::DelayNs;
-use rtic_monotonics::fugit::Duration;
 
 /// Simple busy-wait delay based on core clock.
 ///

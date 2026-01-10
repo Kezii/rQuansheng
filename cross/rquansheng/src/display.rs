@@ -1,7 +1,7 @@
 use display_interface_spi::SPIInterface;
 use dp32g030::{PORTCON, SPI0, SYSCON};
 use embedded_graphics::{
-    mono_font::{ascii::FONT_8X13_BOLD, MonoTextStyle},
+    mono_font::MonoTextStyle,
     pixelcolor::BinaryColor,
     prelude::{Point, Primitive, Size},
     primitives::{PrimitiveStyle, Rectangle},
@@ -114,16 +114,9 @@ impl DisplayMgr {
     }
 }
 
+#[derive(Default)]
 pub struct RenderingMgr {
     historical_rssi: CircularBuffer<u8, 128>,
-}
-
-impl Default for RenderingMgr {
-    fn default() -> Self {
-        Self {
-            historical_rssi: CircularBuffer::new(),
-        }
-    }
 }
 
 impl RenderingMgr {
@@ -326,6 +319,12 @@ pub struct CircularBuffer<T, const N: usize> {
     buffer: [T; N],
     head: usize,
     tail: usize,
+}
+
+impl<T: Default, const N: usize> Default for CircularBuffer<T, N> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<T: Default, const N: usize> CircularBuffer<T, N> {

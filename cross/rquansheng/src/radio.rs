@@ -10,9 +10,9 @@ use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
 use crate::bk4819::regs::Register_old;
-use crate::bk4819::{AfType, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
+use crate::bk4819::{Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk4819_bitbang::Bk4819Bus;
-use crate::bk4819_n::Reg3F;
+use crate::bk4819_n::{AfOutSel, Reg3F};
 use crate::dialer::Dialer;
 use crate::display::RenderingMgr;
 use crate::keyboard::{KeyEvent, KeyboardState, QuanshengKey};
@@ -166,15 +166,14 @@ where
         self.bk
             .set_filter_bandwidth(self.channel_cfg.bandwidth, true)?;
         self.bk.setup_power_amplifier(0, 0)?;
-        self.bk
-            .toggle_gpio_out(GpioPin::Gpio1Pin29PaEnable, false)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio5Pin1Red, false)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio6Pin2Green, false)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio1PaEnable, false)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio5Red, false)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
 
         self.bk.set_frequency(self.channel_cfg.freq)?;
         self.bk
             .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio0Pin28RxEnable, true)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, true)?;
 
         // Squelch thresholds: no EEPROM, pick conservative defaults.
         let thresholds = default_squelch_thresholds(self.channel_cfg.freq);
@@ -187,7 +186,7 @@ where
         )?;
 
         // Start muted; tick task will unmute on squelch-open event.
-        let _ = self.bk.set_af(AfType::Mute);
+        let _ = self.bk.set_af(AfOutSel::Mute);
 
         Ok(())
     }
@@ -197,10 +196,9 @@ where
         self.mode = Mode::Tx;
         self.squelch_open = false;
 
-        self.bk
-            .toggle_gpio_out(GpioPin::Gpio0Pin28RxEnable, false)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio6Pin2Green, false)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio5Pin1Red, true)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, false)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio5Red, true)?;
 
         self.bk
             .set_filter_bandwidth(self.channel_cfg.bandwidth, true)?;
@@ -213,7 +211,7 @@ where
 
         self.bk
             .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio1Pin29PaEnable, true)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio1PaEnable, true)?;
 
         delay.delay_ms(5);
         self.bk
@@ -226,7 +224,7 @@ where
         // - modulation set (FM)
         // - TX is already enabled by `prepare_transmit()` (REG_30=0xC1FE), so just leave it running.
         self.bk.write_register_raw(Register_old::Reg70, 0x0000)?;
-        self.bk.set_af(AfType::Fm)?;
+        self.bk.set_af(AfOutSel::Normal)?;
 
         Ok(())
     }
@@ -274,8 +272,12 @@ where
         // - sqlLost  => GREEN on
         // - sqlFound => GREEN off
         if let Some(open) = ev.squelch_open {
-            let _ = self.bk.toggle_gpio_out(GpioPin::Gpio6Pin2Green, open);
-            let _ = self.bk.set_af(if open { AfType::Fm } else { AfType::Mute });
+            let _ = self.bk.toggle_gpio_out(GpioPin::Gpio6Green, open);
+            let _ = self.bk.set_af(if open {
+                AfOutSel::Normal
+            } else {
+                AfOutSel::Mute
+            });
         }
 
         Ok(ev)

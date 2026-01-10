@@ -392,22 +392,22 @@ pub enum Reg3CXtalMode {
 #[bitenum()]
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Reg47AfOutSel {
+pub enum AfOutSel {
     #[fallback]
     /// Mute
     Mute = 0,
-    /// Normal AF out
+    /// Normal AF out (FM)
     Normal = 1,
-    /// Tone out for Rx (enable Tone1)
+    /// Tone out for Rx (enable Tone1) (Alarm)
     ToneRx = 2,
-    /// Beep out for Tx (enable Tone1 and REG_03[9]=1)
+    /// Beep out for Tx (enable Tone1 and REG_03[9]=1) (Beep)
     BeepTx = 3,
     Baseband1 = 4,
     Baseband2 = 5,
-    /// CTCSS/CDCSS out for Rx test
+    /// CTCSS/CDCSS out for Rx test (Ctco)
     CtcssCdcssRxTest = 6,
     Am = 7,
-    /// FSK out for Rx test
+    /// FSK out for Rx test (Fsko)
     FskOutRx = 8,
     Unknown3 = 9,
     Unknown4 = 10,
@@ -919,12 +919,43 @@ pub struct Reg32 {
 #[address(0x33)]
 #[bitfield(u16)]
 pub struct Reg33 {
-    /// GPIOs Output Value (when enabled).
-    #[bits(8)]
-    pub gpio_out_value: u8,
-    /// GPIOs Output Disable. 1=Disable;0=Enable.
-    #[bits(8)]
-    pub gpio_out_disable: u8,
+    // Note on bit ordering:
+    // The legacy C-port driver (and this codebase historically) uses a reversed mapping where:
+    // - GPIO6 is bit0, GPIO5 is bit1, ..., GPIO0 is bit6 (bit7 appears unused/unknown).
+    // Keeping this layout preserves compatibility with existing behavior.
+    /// GPIO6 output value (bit0).
+    pub gpio6_out: bool,
+    /// GPIO5 output value (bit1).
+    pub gpio5_out: bool,
+    /// GPIO4 output value (bit2).
+    pub gpio4_out: bool,
+    /// GPIO3 output value (bit3).
+    pub gpio3_out: bool,
+    /// GPIO2 output value (bit4).
+    pub gpio2_out: bool,
+    /// GPIO1 output value (bit5).
+    pub gpio1_out: bool,
+    /// GPIO0 output value (bit6).
+    pub gpio0_out: bool,
+    /// GPIO7 output value (bit7, undocumented/unused on UV-K5 boards).
+    pub gpio7_out: bool,
+
+    /// GPIO6 output disable (bit8). 1=Disable;0=Enable.
+    pub gpio6_out_disable: bool,
+    /// GPIO5 output disable (bit9). 1=Disable;0=Enable.
+    pub gpio5_out_disable: bool,
+    /// GPIO4 output disable (bit10). 1=Disable;0=Enable.
+    pub gpio4_out_disable: bool,
+    /// GPIO3 output disable (bit11). 1=Disable;0=Enable.
+    pub gpio3_out_disable: bool,
+    /// GPIO2 output disable (bit12). 1=Disable;0=Enable.
+    pub gpio2_out_disable: bool,
+    /// GPIO1 output disable (bit13). 1=Disable;0=Enable.
+    pub gpio1_out_disable: bool,
+    /// GPIO0 output disable (bit14). 1=Disable;0=Enable.
+    pub gpio0_out_disable: bool,
+    /// GPIO7 output disable (bit15). 1=Disable;0=Enable.
+    pub gpio7_out_disable: bool,
 }
 
 /// REG_34: GPIO4/5/6 output type selection.
@@ -1172,21 +1203,22 @@ pub struct Reg46 {
 }
 
 /// REG_47: AF output selection / invert and Tx filter bypass.
+#[address(0x47)]
 #[bitfield(u16)]
 pub struct Reg47 {
     /// AF Tx Filter Bypass All. 1=Bypass;0=Normal.
     pub aftx_filter_bypass_all: bool,
     #[bits(7)]
-    undocumented_0: u8,
+    pub undocumented_0: u8,
     /// AF Output Selection.
     #[bits(4)]
-    pub af_output_selection: Reg47AfOutSel,
+    pub af_output_selection: AfOutSel,
     #[bits(1)]
-    undocumented_1: u8,
+    pub undocumented_1: u8,
     /// AF Output Inverse Mode. 1=Inverse.
     pub af_out_invert: bool,
     #[bits(2)]
-    undocumented_2: u8,
+    pub undocumented_2: u8,
 }
 
 /// REG_48: AF Rx gain and DAC gain settings.

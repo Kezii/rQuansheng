@@ -5,6 +5,4 @@
 pub mod driver;
 pub mod regs;
 
-pub use driver::{
-    AfType, Bk4819Driver, CompanderMode, CssScanResult, FilterBandwidth, GpioPin, RogerMode,
-};
+pub use driver::{Bk4819Driver, CompanderMode, CssScanResult, FilterBandwidth, GpioPin, RogerMode};

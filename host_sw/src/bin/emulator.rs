@@ -19,9 +19,7 @@ use rquansheng::{
 use std::io::{self};
 use std::time::Duration;
 
-use crate::uartbackedbus::SerialProtocolRadioBus;
-
-mod uartbackedbus;
+use host_sw::uartbackedbus::SerialProtocolRadioBus;
 
 fn main() -> Result<(), core::convert::Infallible> {
     env_logger::init();
@@ -122,36 +120,6 @@ pub fn keycode_to_quansheng_key(keycode: Keycode) -> Option<QuanshengKey> {
         Keycode::F1 => Some(QuanshengKey::Side2),
         Keycode::F2 => Some(QuanshengKey::Side1),
         _ => None,
-    }
-}
-
-pub struct DummyRadioBus;
-
-impl Bk4819Bus for DummyRadioBus {
-    type Error = io::Error;
-
-    fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
-        info!("write_reg: 0x{:x} 0x{:x}", reg, value);
-        Ok(())
-    }
-
-    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error> {
-        info!("read_reg: 0x{:x}", reg);
-        Ok(0)
-    }
-
-    fn write_reg<R: rquansheng::bk4819_n::Bk4819Register>(
-        &mut self,
-        reg: R,
-    ) -> Result<(), Self::Error> {
-        info!("write_reg_n: {:?}", reg);
-        Ok(())
-    }
-
-    fn read_reg<R: rquansheng::bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error> {
-        let ret = R::default();
-        info!("read_reg_n: {:?}", ret);
-        Ok(ret)
     }
 }
 
