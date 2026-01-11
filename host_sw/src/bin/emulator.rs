@@ -11,7 +11,7 @@ use embedded_graphics_simulator::{
 
 use rquansheng::{
     bk4819::Bk4819Driver,
-    bk4819_bitbang::{Bk4819},
+    bk4819_bitbang::Bk4819,
     keyboard::{KeyEvent, QuanshengKey},
     radio::RadioController,
 };

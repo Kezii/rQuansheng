@@ -48,6 +48,21 @@ pub enum OutputPower {
     High,
 }
 
+#[repr(i8)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum SquelchLevel {
+    Squelch0 = 0,
+    Squelch1,
+    Squelch2,
+    Squelch3,
+    Squelch4,
+    Squelch5,
+    Squelch6,
+    Squelch7,
+    Squelch8,
+    Squelch9,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct ChannelConfig {
     /// RX/TX frequency in Hz
@@ -67,6 +82,8 @@ pub struct ChannelConfig {
     pub modulation: Modulation,
 
     pub output_power: OutputPower,
+
+    pub squelch_level: SquelchLevel,
 }
 
 impl Default for ChannelConfig {
@@ -80,6 +97,7 @@ impl Default for ChannelConfig {
             code_type: CodeType::None,
             modulation: Modulation::FM,
             output_power: OutputPower::Low,
+            squelch_level: SquelchLevel::Squelch1,
         }
     }
 }
@@ -233,8 +251,7 @@ where
         self.bk
             .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
 
-        // Squelch thresholds: no EEPROM, pick conservative defaults.
-        let thresholds = default_squelch_thresholds(self.channel_cfg.freq);
+        let thresholds = self.get_squelch_threshold_from_eeprom().unwrap();
         self.bk.setup_squelch(thresholds)?;
 
         self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, true)?;
@@ -343,6 +360,55 @@ where
         Ok(setting)
     }
 
+    #[allow(dead_code, clippy::identity_op)]
+    pub fn get_squelch_threshold_from_eeprom(&mut self) -> Option<SquelchThresholds> {
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+        // Port of `RADIO_ConfigureSquelchAndOutputPower()`
+
+        let squelch_level: u16 = self.channel_cfg.squelch_level as u16;
+
+        // Squelch == 0 means "off" with fixed thresholds (C firmware behavior).
+        if squelch_level == 0 {
+            return Some(SquelchThresholds {
+                open_rssi: 0,
+                close_rssi: 0,
+                open_noise: 127,
+                close_noise: 127,
+                close_glitch: 255,
+                open_glitch: 255,
+            });
+        }
+
+        let base: u16 = match band {
+            FrequencyBand::Band1_50MHz
+            | FrequencyBand::Band2_108MHz
+            | FrequencyBand::Band3_137MHz => 0x1E60,
+            _ => 0x1E00,
+        } + squelch_level;
+
+        let mut read_u8 = |addr: u16| -> Option<u8> {
+            let mut b = [0u8; 1];
+            self.platform.eeprom_read(addr, &mut b).ok()?;
+            Some(b[0])
+        };
+
+        let open_rssi = read_u8(base)?;
+        let close_rssi = read_u8(base + 0x10)?;
+        let open_noise = read_u8(base + 0x20)?.min(127);
+        let close_noise = read_u8(base + 0x30)?.min(127);
+        let close_glitch = read_u8(base + 0x40)?;
+        let open_glitch = read_u8(base + 0x50)?;
+
+        Some(SquelchThresholds {
+            open_rssi,
+            close_rssi,
+            open_noise,
+            close_noise,
+            close_glitch,
+            open_glitch,
+        })
+    }
+
     /// Poll BK4819 interrupt status in the same way the reference C firmware does.
     ///
     /// Returns squelch events (open/close) if observed.
@@ -382,6 +448,7 @@ where
     }
 }
 
+#[derive(Copy, Clone, Debug)]
 pub struct SquelchThresholds {
     pub open_rssi: u8,
     pub close_rssi: u8,
