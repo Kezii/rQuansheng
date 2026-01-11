@@ -16,12 +16,14 @@ pub trait RadioPlatform {
     fn flashlight_off(&mut self);
     fn audio_path_on(&mut self);
     fn audio_path_off(&mut self);
+    fn bk1080_enabled(&mut self, enabled: bool);
 }
 
 pub struct UVK5RadioPlatform {
     pin_backlight: Pin<Output>,
     pin_flashlight: Pin<Output>,
     pin_audio_path: Pin<Output>,
+    pin_bk1080_enable: Pin<Output>,
 }
 
 impl UVK5RadioPlatform {
@@ -29,11 +31,12 @@ impl UVK5RadioPlatform {
         let pin_flashlight = Pin::new(Port::C, 3).into_push_pull_output(syscon, portcon);
         let pin_backlight = Pin::new(Port::B, 6).into_push_pull_output(syscon, portcon);
         let pin_audio_path = Pin::new(Port::C, 4).into_push_pull_output(syscon, portcon);
-
+        let pin_bk1080_enable = Pin::new(Port::B, 15).into_push_pull_output(syscon, portcon);
         Self {
             pin_flashlight,
             pin_backlight,
             pin_audio_path,
+            pin_bk1080_enable,
         }
     }
 }
@@ -75,5 +78,13 @@ impl RadioPlatform for UVK5RadioPlatform {
 
     fn audio_path_off(&mut self) {
         let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_audio_path);
+    }
+
+    fn bk1080_enabled(&mut self, enabled: bool) {
+        if enabled {
+            let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_bk1080_enable);
+        } else {
+            let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_bk1080_enable);
+        }
     }
 }

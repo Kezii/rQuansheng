@@ -49,6 +49,7 @@ mod app {
     use embedded_hal::digital::{InputPin, OutputPin};
     use embedded_io_async::{Read as AsyncRead, Write as AsyncWrite};
     use heapless::Vec;
+    use rquansheng::bk1080::{Bk1080, Bk1080BitBangBus};
     use rquansheng::bk4819::Bk4819Driver;
     use rquansheng::bk4819_bitbang::{bk4819_sda_pin, Bk4819, Bk4819BitBang};
     use rquansheng::delay::CycleDelay;
@@ -99,6 +100,7 @@ mod app {
     struct Shared {
         radio: RadioController<
             Bk4819BitBang<Pin<Output>, Pin<Output>, dp30g030_hal::gpio::FlexPin, CycleDelay>,
+            Bk1080BitBangBus<CycleDelay>,
             UVK5RadioPlatform,
         >,
         /// Lock for PA10/PA11 shared between keypad scanning and EEPROM (bit-banged I2C).
@@ -138,7 +140,11 @@ mod app {
 
         let platform = UVK5RadioPlatform::new(&cx.device.SYSCON, &cx.device.PORTCON);
 
-        let mut radio = RadioController::new(bk, platform);
+        let delay_bb_1080 = CycleDelay::new(48_000_000);
+        let bus_1080 = Bk1080BitBangBus::uvk5_shared(delay_bb_1080);
+        let bk1080 = Bk1080::new(bus_1080);
+
+        let mut radio = RadioController::new(bk, bk1080, platform);
 
         // PTT is PC5, active-low, with pull-up enabled in the reference firmware.
         // We do simple polling + debounce in `radio_10ms_task`.

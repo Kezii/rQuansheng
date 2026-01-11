@@ -3,7 +3,7 @@
 //! We intentionally avoid `syn`/`quote` to keep this crate dependency-free and
 //! friendly to offline builds.
 
-use proc_macro::{Delimiter, Group, Ident, Literal, TokenStream, TokenTree};
+use proc_macro::{Delimiter, Group, Literal, TokenStream, TokenTree};
 
 /// Attach a BK4819 register address to a `struct` definition.
 ///
@@ -44,6 +44,7 @@ impl crate::bk4819_n::RegisterAddress for {name} {{
     out.extend(extra);
     out
 }
+
 
 fn parse_single_literal(attr: TokenStream) -> String {
     let mut it = attr.into_iter();

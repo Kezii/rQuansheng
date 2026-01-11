@@ -9,6 +9,7 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
+use crate::bk1080::{Bk1080, Bk1080Bus};
 use crate::bk4819::{Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk4819_bitbang::Bk4819Bus;
 use crate::bk4819_n::{AfOutSel, Reg3F};
@@ -22,6 +23,7 @@ use crate::radio_platform::RadioPlatform;
 pub enum Mode {
     Rx,
     Tx,
+    WfmRx,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -124,12 +126,14 @@ impl Events {
     }
 }
 
-pub struct RadioController<BUS, PLATFORM>
+pub struct RadioController<BUS, BUS1080, PLATFORM>
 where
     BUS: Bk4819Bus,
+    BUS1080: Bk1080Bus,
     PLATFORM: RadioPlatform,
 {
     pub bk: Bk4819Driver<BUS>,
+    pub bk1080: Bk1080<BUS1080>,
     pub platform: PLATFORM,
     pub channel_cfg: ChannelConfig,
     mode: Mode,
@@ -139,16 +143,18 @@ where
     dialer: Dialer<8>,
 }
 
-impl<BUS, PLATFORM> RadioController<BUS, PLATFORM>
+impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
 where
     BUS: Bk4819Bus,
+    BUS1080: Bk1080Bus,
     PLATFORM: RadioPlatform,
 {
-    pub fn new(bk: Bk4819Driver<BUS>, mut platform: PLATFORM) -> Self {
+    pub fn new(bk: Bk4819Driver<BUS>, bk1080: Bk1080<BUS1080>, mut platform: PLATFORM) -> Self {
         platform.audio_path_off();
         platform.backlight_on();
         Self {
             bk,
+            bk1080,
             platform,
             channel_cfg: ChannelConfig::default(),
             mode: Mode::Rx,
@@ -183,6 +189,7 @@ where
         let new_audio_on = match self.mode {
             Mode::Tx => false,
             Mode::Rx => self.squelch_open,
+            Mode::WfmRx => true,
         };
 
         if new_audio_on != self.audio_on {
@@ -197,7 +204,20 @@ where
 
     pub fn init(&mut self) -> Result<(), BUS::Error> {
         self.bk.init()?;
-        self.enter_rx()
+        self.enter_rx()?;
+
+        Ok(())
+    }
+
+    /// for now as a demo
+    fn _enable_wfm_rx(&mut self) -> Result<(), BUS::Error> {
+        self.platform.bk1080_enabled(true);
+        self.platform.audio_path_on();
+        self.mode = Mode::WfmRx;
+        let mut delay = crate::delay::CycleDelay::new(48_000_000);
+        let _ = self.bk1080.init(&mut delay, Some(1065));
+        let _ = self.bk1080.mute(false);
+        Ok(())
     }
 
     pub fn eat_keyboard_event<D: DelayNs>(&mut self, event: Option<KeyEvent>, delay: &mut D) {

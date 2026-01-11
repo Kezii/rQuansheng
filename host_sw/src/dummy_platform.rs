@@ -48,4 +48,8 @@ impl RadioPlatform for DummyPlatform {
     fn audio_path_off(&mut self) {
         info!("audio_path_off");
     }
+
+    fn bk1080_enabled(&mut self, enabled: bool) {
+        info!("bk1080_enabled: {}", enabled);
+    }
 }

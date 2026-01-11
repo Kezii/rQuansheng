@@ -7,6 +7,7 @@ use defmt_serial as _;
 use panic_probe as _;
 
 // TODO(6) Import your HAL
+pub mod bk1080;
 pub mod bk4819;
 pub mod bk4819_bitbang;
 pub mod bk4819_n;

@@ -67,7 +67,7 @@ self.write_register(
 - [ ] adc / battery level
 - [x] bk4819 bitbang driver
 - [x] bk4819 hal and library
-- [ ] bk1080 driver
+- [x] bk1080 driver
 - [x] keyboard driver and events
 - [x] display driver
 - [x] eeprom driver 
@@ -78,8 +78,9 @@ self.write_register(
 - [x] fm radio tx
 - [x] serial protocol for remote control
 - [ ] defmt logs wrapped by the serial protocol
-- [x] basic UI for radio state
-- [ ] basic UI for menu
+- [x] UI for transceiver state
+- [ ] UI for menu
+- [ ] UI for wfm rx (bk1080)
 - [ ] eeprom settings save
 - [x] support high / medium / low power tx (from eeprom calib. tables)
 - [x] support 10 squelch levels (from eeprom calib. tables)

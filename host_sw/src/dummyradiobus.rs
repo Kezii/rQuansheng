@@ -1,5 +1,5 @@
 use log::info;
-use rquansheng::bk4819_bitbang::Bk4819Bus;
+use rquansheng::{bk1080::Bk1080Bus, bk4819_bitbang::Bk4819Bus};
 
 pub struct DummyRadioBus;
 
@@ -33,5 +33,21 @@ impl Bk4819Bus for DummyRadioBus {
         let ret = R::default();
         info!("read_reg: 0x{:x} -- {:?}", R::get_address(), ret);
         Ok(ret)
+    }
+}
+
+pub struct DummyRadioBus1080;
+
+impl Bk1080Bus for DummyRadioBus1080 {
+    type Error = std::io::Error;
+
+    fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
+        info!("write_reg_raw: 0x{:x} 0x{:x}", reg, value);
+        Ok(())
+    }
+
+    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error> {
+        info!("read_reg_raw: 0x{:x}", reg);
+        Ok(0)
     }
 }
