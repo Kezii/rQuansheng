@@ -64,6 +64,16 @@ pub enum SquelchLevel {
 }
 
 #[derive(Copy, Clone, Debug)]
+pub struct SquelchThresholds {
+    pub open_rssi: u8,
+    pub close_rssi: u8,
+    pub open_noise: u8,
+    pub close_noise: u8,
+    pub close_glitch: u8,
+    pub open_glitch: u8,
+}
+
+#[derive(Copy, Clone, Debug)]
 pub struct ChannelConfig {
     /// RX/TX frequency in Hz
     pub freq: u32,
@@ -445,39 +455,5 @@ where
         }
 
         Ok(())
-    }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub struct SquelchThresholds {
-    pub open_rssi: u8,
-    pub close_rssi: u8,
-    pub open_noise: u8,
-    pub close_noise: u8,
-    pub close_glitch: u8,
-    pub open_glitch: u8,
-}
-
-fn default_squelch_thresholds(freq_hz: u32) -> SquelchThresholds {
-    // Same as the previous app-level helper, but lives here now.
-    let is_vhf = freq_hz < 170_400_000;
-    if is_vhf {
-        SquelchThresholds {
-            open_rssi: 70,
-            close_rssi: 55,
-            open_noise: 50,
-            close_noise: 60,
-            close_glitch: 70,
-            open_glitch: 80,
-        }
-    } else {
-        SquelchThresholds {
-            open_rssi: 40,
-            close_rssi: 30,
-            open_noise: 45,
-            close_noise: 55,
-            close_glitch: 70,
-            open_glitch: 80,
-        }
     }
 }
