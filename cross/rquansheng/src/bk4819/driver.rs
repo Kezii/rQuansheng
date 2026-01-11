@@ -780,7 +780,7 @@ where
     ) -> Result<(), BUS::Error> {
         self.enter_tx_mute()?;
         if play_speaker {
-            platform.audio_path_on();
+            platform.set_audio_path(true);
             self.set_af(AfOutSel::BeepTx)?;
         } else {
             self.set_af(AfOutSel::Mute)?;
@@ -801,7 +801,7 @@ where
         self.enter_tx_mute()?;
 
         if play_speaker {
-            platform.audio_path_off();
+            platform.set_audio_path(false);
             self.set_af(AfOutSel::Mute)?;
         }
 

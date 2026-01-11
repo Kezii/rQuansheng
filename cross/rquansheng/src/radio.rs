@@ -150,8 +150,8 @@ where
     PLATFORM: RadioPlatform,
 {
     pub fn new(bk: Bk4819Driver<BUS>, bk1080: Bk1080<BUS1080>, mut platform: PLATFORM) -> Self {
-        platform.audio_path_off();
-        platform.backlight_on();
+        platform.set_audio_path(false);
+        platform.set_backlight(true);
         Self {
             bk,
             bk1080,
@@ -194,11 +194,7 @@ where
 
         if new_audio_on != self.audio_on {
             self.audio_on = new_audio_on;
-            if new_audio_on {
-                self.platform.audio_path_on();
-            } else {
-                self.platform.audio_path_off();
-            }
+            self.platform.set_audio_path(new_audio_on);
         }
     }
 
@@ -212,7 +208,7 @@ where
     /// for now as a demo
     fn _enable_wfm_rx(&mut self) -> Result<(), BUS::Error> {
         self.platform.bk1080_enabled(true);
-        self.platform.audio_path_on();
+        self.platform.set_audio_path(true);
         self.mode = Mode::WfmRx;
         let mut delay = crate::delay::CycleDelay::new(48_000_000);
         let _ = self.bk1080.init(&mut delay, Some(1065));
@@ -262,7 +258,7 @@ where
         self.mode = Mode::Rx;
         self.squelch_open = false;
 
-        self.platform.audio_path_off();
+        self.platform.set_audio_path(false);
 
         self.bk
             .set_filter_bandwidth(self.channel_cfg.bandwidth, true)?;
@@ -307,7 +303,7 @@ where
         self.mode = Mode::Tx;
         self.squelch_open = false;
 
-        self.platform.audio_path_off();
+        self.platform.set_audio_path(false);
 
         self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, false)?;
 

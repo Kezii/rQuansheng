@@ -25,28 +25,16 @@ impl RadioPlatform for DummyPlatform {
         Ok(())
     }
 
-    fn backlight_on(&mut self) {
-        info!("backlight_on");
+    fn set_backlight(&mut self, on: bool) {
+        info!("set_backlight: {}", on);
     }
 
-    fn backlight_off(&mut self) {
-        info!("backlight_off");
+    fn set_flashlight(&mut self, on: bool) {
+        info!("set_flashlight: {}", on);
     }
 
-    fn flashlight_on(&mut self) {
-        info!("flashlight_on");
-    }
-
-    fn flashlight_off(&mut self) {
-        info!("flashlight_off");
-    }
-
-    fn audio_path_on(&mut self) {
-        info!("audio_path_on");
-    }
-
-    fn audio_path_off(&mut self) {
-        info!("audio_path_off");
+    fn set_audio_path(&mut self, on: bool) {
+        info!("set_audio_path: {}", on);
     }
 
     fn bk1080_enabled(&mut self, enabled: bool) {

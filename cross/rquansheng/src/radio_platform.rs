@@ -10,12 +10,9 @@ pub trait RadioPlatform {
     fn eeprom_read(&mut self, address: u16, data: &mut [u8]) -> Result<(), Self::EepromError>;
     fn eeprom_write(&mut self, address: u16, data: &[u8; 8]) -> Result<(), Self::EepromError>;
 
-    fn backlight_on(&mut self);
-    fn backlight_off(&mut self);
-    fn flashlight_on(&mut self);
-    fn flashlight_off(&mut self);
-    fn audio_path_on(&mut self);
-    fn audio_path_off(&mut self);
+    fn set_backlight(&mut self, on: bool);
+    fn set_flashlight(&mut self, on: bool);
+    fn set_audio_path(&mut self, on: bool);
     fn bk1080_enabled(&mut self, enabled: bool);
 }
 
@@ -56,28 +53,28 @@ impl RadioPlatform for UVK5RadioPlatform {
         eeprom::write_buffer_8(&mut delay, address, data)
     }
 
-    fn backlight_on(&mut self) {
-        let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_backlight);
+    fn set_backlight(&mut self, on: bool) {
+        if on {
+            let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_backlight);
+        } else {
+            let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_backlight);
+        }
     }
 
-    fn backlight_off(&mut self) {
-        let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_backlight);
+    fn set_flashlight(&mut self, on: bool) {
+        if on {
+            let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_flashlight);
+        } else {
+            let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_flashlight);
+        }
     }
 
-    fn flashlight_on(&mut self) {
-        let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_flashlight);
-    }
-
-    fn flashlight_off(&mut self) {
-        let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_flashlight);
-    }
-
-    fn audio_path_on(&mut self) {
-        let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_audio_path);
-    }
-
-    fn audio_path_off(&mut self) {
-        let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_audio_path);
+    fn set_audio_path(&mut self, on: bool) {
+        if on {
+            let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_audio_path);
+        } else {
+            let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_audio_path);
+        }
     }
 
     fn bk1080_enabled(&mut self, enabled: bool) {
