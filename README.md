@@ -61,8 +61,9 @@ self.write_register(
 
 ## Basics
 - [x] run a binary
+- [x] pac driver
 - [x] run RTIC
-- [x] gpio driver
+- [x] hal drivers
 - [ ] adc / battery level
 - [x] bk4819 bitbang driver
 - [x] bk4819 hal and library
@@ -80,8 +81,11 @@ self.write_register(
 - [x] basic UI for radio state
 - [ ] basic UI for menu
 - [ ] eeprom settings save
-- [ ] full support for CTCSS / CDCSS etc etc
-- [ ] AM / SSB
+- [x] support high / medium / low power tx (from eeprom calib. tables)
+- [x] support 10 squelch levels (from eeprom calib. tables)
+- [ ] support for CTCSS / DCS etc etc
+- [ ] support AM / SSB / raw etc reception
+- [ ] AM fix or whatever
 
 
 ## In the far future, probably never
