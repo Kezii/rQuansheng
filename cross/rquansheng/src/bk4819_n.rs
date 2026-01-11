@@ -1156,6 +1156,7 @@ pub struct Reg40 {
 }
 
 /// REG_43: RF/AF bandwidth and demod gain settings.
+#[address(0x43)]
 #[bitfield(u16)]
 pub struct Reg43 {
     #[bits(2)]
@@ -1163,7 +1164,7 @@ pub struct Reg43 {
     /// Gain after FM Demodulation. 1=6dB;0=0dB
     pub fm_demod_gain: bool,
     #[bits(1)]
-    undocumented_1: u8,
+    pub undocumented_1: u8,
     /// BW Mode Selection. 00=12.5k;01=6.25k;10=25k/20k
     #[bits(2)]
     pub bw_mode: u8,
@@ -1334,6 +1335,7 @@ pub struct Reg51 {
 }
 
 /// REG_52: CTCSS/CTCSS-tail/CDCSS detection thresholds and phase tail options.
+#[address(0x52)]
 #[bitfield(u16)]
 pub struct Reg52 {
     /// CTCSS lost detect threshold.

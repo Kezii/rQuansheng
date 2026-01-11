@@ -65,14 +65,6 @@ pub enum GpioPin {
 pub enum RogerMode {
     Off,
     Roger,
-    Mdc,
-}
-
-/// Board/app hook for enabling/disabling the audio path (speaker/amp).
-pub trait AudioPath {
-    type Error;
-    fn on(&mut self) -> Result<(), Self::Error>;
-    fn off(&mut self) -> Result<(), Self::Error>;
 }
 
 /// High-level driver, owning a `Bk4819` instance plus a small amount of state
@@ -183,14 +175,7 @@ where
         self.set_mic_gain(Self::DEFAULT_MIC_GAIN)?;
 
         // REG_48 .. RX AF level (see C comments)
-        //self.write_register(Register::Reg48, (11u16 << 12) | (58u16 << 4) | 8u16)?;
-        self.bitbang.write_reg(
-            Reg48::new()
-                .with_af_dac_gain(8)
-                .with_afrx_gain2(58)
-                .with_afrx_gain1(0)
-                .with_undocumented(11),
-        )?;
+        self.set_gains(58, 8)?;
 
         // DTMF coefficients table
         const DTMF_COEFFS: [u16; 16] = [
@@ -219,8 +204,7 @@ where
         // This sets the GPIO output-disable mask as in the original C port.
         self.gpio_out_state = Reg33::from(0x9000);
         self.bitbang.write_reg(self.gpio_out_state)?;
-        //self.write_register(Register::Reg3F, 0x0000)?;
-        self.bitbang.write_reg(Reg3F::new())?;
+        self.disable_interrupts()?;
 
         Ok(())
     }
@@ -372,31 +356,53 @@ where
         bandwidth: FilterBandwidth,
         weak_no_different: bool,
     ) -> Result<(), BUS::Error> {
-        let val: u16 = match bandwidth {
+        match bandwidth {
             FilterBandwidth::Wide => {
-                let mut v = (4u16 << 12) | (6u16 << 6) | (2u16 << 4) | (1u16 << 3);
-                v |= if weak_no_different {
-                    4u16 << 9
-                } else {
-                    2u16 << 9
-                };
-                v
+                self.bitbang.write_reg(
+                    Reg43::new()
+                        .with_rf_bw_strong(4)
+                        .with_rf_bw_weak(if weak_no_different { 4 } else { 2 })
+                        .with_aftx_lpf2_bw(6)
+                        .with_bw_mode(2)
+                        .with_undocumented_1(1)
+                        .with_fm_demod_gain(false),
+                )?;
             }
             FilterBandwidth::Narrow => {
-                let mut v = (4u16 << 12) | (1u16 << 3);
-                v |= if weak_no_different {
-                    4u16 << 9
-                } else {
-                    2u16 << 9
-                };
-                v
+                self.bitbang.write_reg(
+                    Reg43::new()
+                        .with_rf_bw_strong(4)
+                        .with_rf_bw_weak(if weak_no_different { 4 } else { 2 })
+                        .with_aftx_lpf2_bw(0)
+                        .with_bw_mode(0)
+                        .with_undocumented_1(1)
+                        .with_fm_demod_gain(false),
+                )?;
             }
             FilterBandwidth::Narrower => {
-                (2u16 << 12) | (2u16 << 9) | (1u16 << 6) | (1u16 << 4) | (1u16 << 3)
+                self.bitbang.write_reg(
+                    Reg43::new()
+                        .with_rf_bw_strong(2)
+                        .with_rf_bw_weak(2)
+                        .with_aftx_lpf2_bw(1)
+                        .with_bw_mode(1)
+                        .with_undocumented_1(1)
+                        .with_fm_demod_gain(false),
+                )?;
             }
-            FilterBandwidth::U1k7 => (1u16 << 6) | (1u16 << 4) | (1u16 << 3),
-        };
-        self.write_register_raw(Register_old::Reg43, val)
+            FilterBandwidth::U1k7 => {
+                self.bitbang.write_reg(
+                    Reg43::new()
+                        .with_rf_bw_strong(0)
+                        .with_rf_bw_weak(0)
+                        .with_aftx_lpf2_bw(1)
+                        .with_bw_mode(1)
+                        .with_undocumented_1(1)
+                        .with_fm_demod_gain(false),
+                )?;
+            }
+        }
+        Ok(())
     }
 
     /// Port of `BK4819_SetupPowerAmplifier(bias, frequency)`.
@@ -763,18 +769,18 @@ where
     }
 
     /// Port of `BK4819_PlaySingleTone(...)`.
-    pub fn play_single_tone<D: DelayNs, A: AudioPath>(
+    pub fn play_single_tone<D: DelayNs, A: crate::radio_platform::RadioPlatform>(
         &mut self,
         tone_hz: u32,
         delay_ms: u32,
         level: u8,
         play_speaker: bool,
         delay: &mut D,
-        audio: &mut A,
+        platform: &mut A,
     ) -> Result<(), BUS::Error> {
         self.enter_tx_mute()?;
         if play_speaker {
-            let _ = audio.on();
+            platform.audio_path_on();
             self.set_af(AfOutSel::BeepTx)?;
         } else {
             self.set_af(AfOutSel::Mute)?;
@@ -795,7 +801,7 @@ where
         self.enter_tx_mute()?;
 
         if play_speaker {
-            let _ = audio.off();
+            platform.audio_path_off();
             self.set_af(AfOutSel::Mute)?;
         }
 
@@ -852,24 +858,60 @@ where
 
     pub fn exit_bypass(&mut self) -> Result<(), BUS::Error> {
         self.set_af(AfOutSel::Mute)?;
-        let reg_val = self.read_register_raw(Register_old::Reg7E)?;
-        self.write_register_raw(
-            Register_old::Reg7E,
-            (reg_val & !(0b111u16 << 3)) | (5u16 << 3),
-        )
+
+        let reg_7e = self.bitbang.read_reg::<Reg7E>()?;
+
+        self.bitbang.write_reg(reg_7e.with_dcf_bw_tx(5))
     }
 
     pub fn prepare_transmit(&mut self) -> Result<(), BUS::Error> {
         self.exit_bypass()?;
         self.exit_tx_mute()?;
-        self.tx_on_beep()
+        self.txon_beep()
     }
 
-    pub fn tx_on_beep(&mut self) -> Result<(), BUS::Error> {
-        self.write_register_raw(Register_old::Reg37, 0x1D0F)?;
-        self.write_register_raw(Register_old::Reg52, 0x028F)?;
+    pub fn txon_beep(&mut self) -> Result<(), BUS::Error> {
+        self.bitbang.write_reg(
+            Reg37::new()
+                .with_bg_en(true)
+                .with_xtal_en(true)
+                .with_dsp_en(true)
+                .with_undocumented_0(true)
+                .with_pll_ldo_byp(false)
+                .with_rf_ldo_byp(false)
+                .with_vco_ldo_byp(false)
+                .with_ana_ldo_byp(false)
+                .with_pll_ldo_sel(true)
+                .with_rf_ldo_sel(false)
+                .with_vco_ldo_sel(true)
+                .with_ana_ldo_sel(true)
+                .with_dsp_volt(1),
+        )?;
+
+        self.bitbang.write_reg(
+            Reg52::new()
+                .with_ctcss_lost_th(15)
+                .with_ctcss_found_th(10)
+                .with_detect_thresh_mode(false)
+                .with_tail_mode(Reg52TailMode::Tail1344)
+                .with_tail_shift_en(false),
+        )?;
+
         self.disable()?;
-        self.write_register_raw(Register_old::Reg30, 0xC1FE)
+
+        self.bitbang.write_reg(
+            Reg30::new()
+                .with_rx_dsp_en(false)
+                .with_tx_dsp_en(true)
+                .with_mic_adc_en(true)
+                .with_pa_gain_en(true)
+                .with_pll_vco_en(15)
+                .with_disc_mode_disable(true)
+                .with_af_dac_en(false)
+                .with_rx_link_en(0)
+                .with_undocumented(true)
+                .with_vco_cal_en(true),
+        )
     }
 
     pub fn exit_sub_au(&mut self) -> Result<(), BUS::Error> {
@@ -1045,6 +1087,10 @@ where
         self.bitbang.read_reg::<Reg02>()
     }
 
+    pub fn disable_interrupts(&mut self) -> Result<(), BUS::Error> {
+        self.bitbang.write_reg::<Reg3F>(Reg3F::from(0))
+    }
+
     pub fn get_dtmf_5tone_code(&mut self) -> Result<u8, BUS::Error> {
         Ok(((self.read_register_raw(Register_old::Reg0B)? >> 8) & 0x0F) as u8)
     }
@@ -1061,10 +1107,20 @@ where
         Ok(((self.read_register_raw(Register_old::Reg0C)? >> 10) & 0x03) as u8)
     }
 
+    pub fn set_gains(&mut self, volume_gain: u8, dac_gain: u8) -> Result<(), BUS::Error> {
+        self.bitbang.write_reg(
+            Reg48::new()
+                .with_af_dac_gain(dac_gain)
+                .with_afrx_gain2(volume_gain)
+                .with_afrx_gain1(0)
+                .with_undocumented(11),
+        )
+    }
+
     // --- FSK ---------------------------------------------------------------
 
     pub fn reset_fsk<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), BUS::Error> {
-        self.write_register_raw(Register_old::Reg3F, 0x0000)?;
+        self.disable_interrupts()?;
         self.write_register_raw(Register_old::Reg59, 0x0068)?;
         delay.delay_ms(30);
         self.disable()
@@ -1105,11 +1161,11 @@ where
 
     pub fn prepare_fsk_receive(&mut self) -> Result<(), BUS::Error> {
         // Mirror C ordering (minus delays handled externally if needed).
-        self.write_register_raw(Register_old::Reg3F, 0x0000)?;
+        self.disable_interrupts()?;
         self.write_register_raw(Register_old::Reg59, 0x0068)?;
         self.disable()?;
         self.clear_interrupts()?;
-        self.write_register_raw(Register_old::Reg3F, 0x0000)?;
+        self.disable_interrupts()?;
         self.rx_turn_on()?;
         // Enable FSK RX finished + FIFO almost full
         self.write_register_raw(Register_old::Reg3F, (1u16 << 13) | (1u16 << 12))?;
@@ -1130,7 +1186,6 @@ where
         match mode {
             RogerMode::Off => Ok(()),
             RogerMode::Roger => self.play_roger_normal(delay),
-            RogerMode::Mdc => self.play_roger_mdc(delay),
         }
     }
 
@@ -1159,35 +1214,6 @@ where
 
         self.disable_tones()?;
         self.write_register_raw(Register_old::Reg30, 0xC1FE)?;
-        Ok(())
-    }
-
-    fn play_roger_mdc<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), BUS::Error> {
-        const FSK_ROGER_TABLE: [u16; 7] = [0xF1A2, 0x7446, 0x61A4, 0x6544, 0x4E8A, 0xE044, 0xEA84];
-
-        self.set_af(AfOutSel::Mute)?;
-        // RogerMDC_Configuration table from C
-        self.write_register_raw(Register_old::Reg58, 0x37C3)?;
-        self.write_register_raw(Register_old::Reg72, 0x3065)?;
-        self.write_register_raw(Register_old::Reg70, 0x00E0)?;
-        self.write_register_raw(Register_old::Reg5D, 0x0D00)?;
-        self.write_register_raw(Register_old::Reg59, 0x8068)?;
-        self.write_register_raw(Register_old::Reg59, 0x0068)?;
-        self.write_register_raw(Register_old::Reg5A, 0x5555)?;
-        self.write_register_raw(Register_old::Reg5B, 0x55AA)?;
-        self.write_register_raw(Register_old::Reg5C, 0xAA30)?;
-
-        for &w in &FSK_ROGER_TABLE {
-            self.write_register_raw(Register_old::Reg5F, w)?;
-        }
-        delay.delay_ms(20);
-
-        self.write_register_raw(Register_old::Reg59, 0x0868)?; // enable FSK TX
-        delay.delay_ms(180);
-
-        self.write_register_raw(Register_old::Reg59, 0x0068)?;
-        self.disable_tones()?;
-        self.write_register_raw(Register_old::Reg58, 0x0000)?;
         Ok(())
     }
 

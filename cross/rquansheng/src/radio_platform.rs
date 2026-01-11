@@ -7,8 +7,8 @@ use crate::eeprom;
 pub trait RadioPlatform {
     type EepromError;
 
-    fn eeprom_read(address: u16, data: &mut [u8]) -> Result<(), Self::EepromError>;
-    fn eeprom_write(address: u16, data: &[u8; 8]) -> Result<(), Self::EepromError>;
+    fn eeprom_read(&mut self, address: u16, data: &mut [u8]) -> Result<(), Self::EepromError>;
+    fn eeprom_write(&mut self, address: u16, data: &[u8; 8]) -> Result<(), Self::EepromError>;
 
     fn backlight_on(&mut self);
     fn backlight_off(&mut self);
@@ -41,13 +41,13 @@ impl UVK5RadioPlatform {
 impl RadioPlatform for UVK5RadioPlatform {
     type EepromError = eeprom::Error;
 
-    fn eeprom_read(address: u16, data: &mut [u8]) -> Result<(), Self::EepromError> {
+    fn eeprom_read(&mut self, address: u16, data: &mut [u8]) -> Result<(), Self::EepromError> {
         // 48MHz core clock (matches usage elsewhere in the codebase).
         let mut delay = CycleDelay::new(48_000_000);
         eeprom::read_buffer(&mut delay, address, data)
     }
 
-    fn eeprom_write(address: u16, data: &[u8; 8]) -> Result<(), Self::EepromError> {
+    fn eeprom_write(&mut self, address: u16, data: &[u8; 8]) -> Result<(), Self::EepromError> {
         // 48MHz core clock (matches usage elsewhere in the codebase).
         let mut delay = CycleDelay::new(48_000_000);
         eeprom::write_buffer_8(&mut delay, address, data)

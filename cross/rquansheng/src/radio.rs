@@ -14,6 +14,7 @@ use crate::bk4819_bitbang::Bk4819Bus;
 use crate::bk4819_n::{AfOutSel, Reg3F};
 use crate::dialer::Dialer;
 use crate::display::RenderingMgr;
+use crate::frequencies::{calculate_output_power_setting, FrequencyBand};
 use crate::keyboard::{KeyEvent, QuanshengKey};
 use crate::radio_platform::RadioPlatform;
 
@@ -21,6 +22,30 @@ use crate::radio_platform::RadioPlatform;
 pub enum Mode {
     Rx,
     Tx,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum CodeType {
+    None,
+    CTCSS,
+    DCS,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Modulation {
+    FM,
+    AM,
+    USB,
+    BYP,
+    RAW,
+}
+
+#[repr(i8)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum OutputPower {
+    Low = 0,
+    Mid,
+    High,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -36,6 +61,12 @@ pub struct ChannelConfig {
     pub mic_gain: u8,
 
     pub roger_mode: RogerMode,
+
+    pub code_type: CodeType,
+
+    pub modulation: Modulation,
+
+    pub output_power: OutputPower,
 }
 
 impl Default for ChannelConfig {
@@ -46,6 +77,9 @@ impl Default for ChannelConfig {
             tx_bias: 20,
             mic_gain: 16, // ~8.0 dB (matches the reference firmware's mid preset)
             roger_mode: RogerMode::Roger,
+            code_type: CodeType::None,
+            modulation: Modulation::FM,
+            output_power: OutputPower::Low,
         }
     }
 }
@@ -180,21 +214,30 @@ where
         self.mode = Mode::Rx;
         self.squelch_open = false;
 
+        self.platform.audio_path_off();
+
         self.bk
             .set_filter_bandwidth(self.channel_cfg.bandwidth, true)?;
+
         self.bk.setup_power_amplifier(0, 0)?;
         self.bk.toggle_gpio_out(GpioPin::Gpio1PaEnable, false)?;
         self.bk.toggle_gpio_out(GpioPin::Gpio5Red, false)?;
         self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
 
+        self.bk.clear_interrupts()?;
+        self.bk.disable_interrupts()?;
+
+        self.bk.set_mic_gain(self.channel_cfg.mic_gain)?;
+
         self.bk.set_frequency(self.channel_cfg.freq)?;
         self.bk
             .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, true)?;
 
         // Squelch thresholds: no EEPROM, pick conservative defaults.
         let thresholds = default_squelch_thresholds(self.channel_cfg.freq);
         self.bk.setup_squelch(thresholds)?;
+
+        self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, true)?;
 
         self.bk.bk_mut().write_reg(
             Reg3F::new()
@@ -202,48 +245,102 @@ where
                 .with_squelch_lost_en(true),
         )?;
 
+        self.bk
+            .init_agc(self.channel_cfg.modulation == Modulation::AM)?;
+        self.bk.set_agc(true)?;
+
         // Start muted; tick task will unmute on squelch-open event.
         let _ = self.bk.set_af(AfOutSel::Mute);
 
         Ok(())
     }
 
-    /// Enter TX mode (minimal port of the C sequencing used in `RADIO_SetTxParameters()`).
+    /// Enter TX mode (port of the C sequencing used in `RADIO_SetTxParameters()`).
     pub fn enter_tx<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), BUS::Error> {
         self.mode = Mode::Tx;
         self.squelch_open = false;
 
+        self.platform.audio_path_off();
+
         self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, false)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
-        self.bk.toggle_gpio_out(GpioPin::Gpio5Red, true)?;
 
         self.bk
             .set_filter_bandwidth(self.channel_cfg.bandwidth, true)?;
         self.bk.set_frequency(self.channel_cfg.freq)?;
-        // Mic gain (C: BK4819_REG_7D = 0xE940 | (mic & 0x1f)).
+
         self.bk.set_mic_gain(self.channel_cfg.mic_gain)?;
+
+        // compander should be set here
+
         self.bk.prepare_transmit()?;
 
         delay.delay_ms(10);
 
         self.bk
             .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
+
         self.bk.toggle_gpio_out(GpioPin::Gpio1PaEnable, true)?;
 
         delay.delay_ms(5);
+
+        let bias_settings = self.get_bias()?;
         self.bk
-            .setup_power_amplifier(self.channel_cfg.tx_bias, self.channel_cfg.freq)?;
+            .setup_power_amplifier(bias_settings, self.channel_cfg.freq)?;
 
         delay.delay_ms(10);
-        self.bk.exit_sub_au()?;
-        // Make sure we're in normal voice TX:
-        // - tones disabled
-        // - modulation set (FM)
-        // - TX is already enabled by `prepare_transmit()` (REG_30=0xC1FE), so just leave it running.
+
+        match self.channel_cfg.code_type {
+            CodeType::None => {
+                self.bk.exit_sub_au()?;
+            }
+            CodeType::CTCSS => {}
+            CodeType::DCS => {}
+        }
+
         self.bk.disable_tones()?;
         self.bk.set_af(AfOutSel::Normal)?;
 
+        self.bk.toggle_gpio_out(GpioPin::Gpio5Red, true)?;
+        self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
+
         Ok(())
+    }
+
+    pub fn get_bias(&mut self) -> Result<u8, BUS::Error> {
+        // Port of the C logic in `RADIO_SetTxParameters()`:
+        // - Band = FREQUENCY_GetBand(freq)
+        // - EEPROM_ReadBuffer(0x1ED0 + (Band * 16) + (OUTPUT_POWER * 3), Txp, 3)
+        // - TXP_CalculatedSetting = FREQUENCY_CalculateOutputPower(...)
+
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+
+        let mut txp = [0u8; 3];
+
+        let band_idx = band.eeprom_index();
+
+        let pwr_idx: u16 = self.channel_cfg.output_power as u16;
+
+        let addr = 0x1ED0u16 + (band_idx * 16) + (pwr_idx * 3);
+
+        // If EEPROM isn't available / read fails, fall back to the manual `tx_bias` field.
+        if self.platform.eeprom_read(addr, &mut txp).is_err() {
+            return Ok(0);
+        }
+
+        let (lower, upper) = band.limits_hz().unwrap_or((50_000_000, 76_000_000));
+        let middle = (lower + upper) / 2;
+
+        let setting = calculate_output_power_setting(
+            txp[0],
+            txp[1],
+            txp[2],
+            lower,
+            middle,
+            upper,
+            self.channel_cfg.freq,
+        );
+
+        Ok(setting)
     }
 
     /// Poll BK4819 interrupt status in the same way the reference C firmware does.
