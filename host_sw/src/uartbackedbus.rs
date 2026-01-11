@@ -71,7 +71,7 @@ impl Bk4819Bus for SerialProtocolRadioBus {
     type Error = io::Error;
 
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
-        self.send(&RadioBound::WriteRegister(reg, value))?;
+        self.send(&RadioBound::WriteBk4819Register(reg, value))?;
 
         if let Ok(HostBound::WriteAck(reg, value)) = self.recv_hostbound() {
             info!("WriteAck: 0x{:x} 0x{:x}", reg, value);
@@ -84,7 +84,7 @@ impl Bk4819Bus for SerialProtocolRadioBus {
     }
 
     fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error> {
-        self.send(&RadioBound::ReadRegister(reg))?;
+        self.send(&RadioBound::ReadBk4819Register(reg))?;
 
         // Be tolerant: ignore unrelated replies (e.g. late Pong).
         for _ in 0..8 {

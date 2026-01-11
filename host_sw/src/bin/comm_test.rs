@@ -30,7 +30,7 @@ fn main() {
 
     let mut now = std::time::Instant::now();
     loop {
-        let ping = RadioBound::ReadRegister(0x02);
+        let ping = RadioBound::ReadBk4819Register(0x02);
         let ping_encoded = encode_line(&ping).unwrap();
         port_clone.write_all(&ping_encoded).unwrap();
 
@@ -57,7 +57,7 @@ mod tests {
         let ping_decoded = decode_line::<RadioBound>(&ping_encoded).unwrap();
         assert_eq!(ping_decoded, ping);
 
-        let write_register = RadioBound::WriteRegister(0x10, 0x20);
+        let write_register = RadioBound::WriteBk4819Register(0x10, 0x20);
         let write_register_encoded = encode_line(&write_register).unwrap();
         let write_register_decoded = decode_line::<RadioBound>(&write_register_encoded).unwrap();
         assert_eq!(write_register_decoded, write_register);

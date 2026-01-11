@@ -221,6 +221,14 @@ where
         )
     }
 
+    pub fn __internal_write_register_raw(&mut self, reg: u8, value: u16) -> Result<(), BUS::Error> {
+        self.bus.write_reg_raw(reg, value)
+    }
+
+    pub fn __internal_read_register_raw(&mut self, reg: u8) -> Result<u16, BUS::Error> {
+        self.bus.read_reg_raw(reg)
+    }
+
     /// Set the receive frequency (100 kHz units) and band.
     ///
     /// Mirrors `BK1080_SetFrequency(frequency, band)`.

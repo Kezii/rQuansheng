@@ -48,12 +48,17 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RadioBound {
     Ping,
-    WriteRegister(u8, u16),
-    ReadRegister(u8),
+    WriteBk4819Register(u8, u16),
+    ReadBk4819Register(u8),
+    WriteBk1080Register(u8, u16),
+    ReadBk1080Register(u8),
     /// Read a single byte from EEPROM at `address`.
     ReadEepromByte {
         address: u16,
     },
+    SetAudioPath(bool),
+    SetBacklight(bool),
+    SetFlashlight(bool),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

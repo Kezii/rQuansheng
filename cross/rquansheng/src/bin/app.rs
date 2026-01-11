@@ -236,6 +236,8 @@ mod app {
 
     #[task(priority = 1, local = [uart1, pin_flashlight], shared = [radio, i2c_lock])]
     async fn uart_task(mut cx: uart_task::Context) {
+        use rquansheng::radio_platform::RadioPlatform;
+
         //defmt_serial::defmt_serial(crate::SERIAL.init(uart1));
         let uart1 = cx
             .local
@@ -259,7 +261,7 @@ mod app {
                         tx.write_all(&reply_encoded).await.unwrap();
                     }
 
-                    RadioBound::WriteRegister(reg, value) => {
+                    RadioBound::WriteBk4819Register(reg, value) => {
                         cx.shared
                             .radio
                             .lock(|r| r.bk.__internal_write_register_raw(reg, value));
@@ -268,7 +270,7 @@ mod app {
                         tx.write_all(&reply_encoded).await.unwrap();
                     }
 
-                    RadioBound::ReadRegister(reg) => {
+                    RadioBound::ReadBk4819Register(reg) => {
                         let value = cx
                             .shared
                             .radio
@@ -294,6 +296,38 @@ mod app {
                         let reply = HostBound::EepromByte { address, value };
                         let reply_encoded = encode_line(&reply).unwrap();
                         tx.write_all(&reply_encoded).await.unwrap();
+                    }
+
+                    RadioBound::WriteBk1080Register(reg, value) => {
+                        let _ = cx
+                            .shared
+                            .radio
+                            .lock(|r| r.bk1080.__internal_write_register_raw(reg, value));
+                        let reply = HostBound::WriteAck(reg, value);
+                        let reply_encoded = encode_line(&reply).unwrap();
+                        tx.write_all(&reply_encoded).await.unwrap();
+                    }
+
+                    RadioBound::ReadBk1080Register(reg) => {
+                        let value = cx
+                            .shared
+                            .radio
+                            .lock(|r| r.bk1080.__internal_read_register_raw(reg));
+                        let reply = HostBound::Register(reg, value.unwrap_or(0));
+                        let reply_encoded = encode_line(&reply).unwrap();
+                        tx.write_all(&reply_encoded).await.unwrap();
+                    }
+
+                    RadioBound::SetAudioPath(on) => {
+                        cx.shared.radio.lock(|r| r.platform.set_audio_path(on));
+                    }
+
+                    RadioBound::SetBacklight(on) => {
+                        cx.shared.radio.lock(|r| r.platform.set_backlight(on));
+                    }
+
+                    RadioBound::SetFlashlight(on) => {
+                        cx.shared.radio.lock(|r| r.platform.set_flashlight(on));
                     }
                 }
             }
