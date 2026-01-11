@@ -50,7 +50,7 @@ mod app {
     use embedded_io_async::{Read as AsyncRead, Write as AsyncWrite};
     use heapless::Vec;
     use rquansheng::bk4819::Bk4819Driver;
-    use rquansheng::bk4819_bitbang::{Bk4819, Bk4819BitBang, Dp32g030BidiPin};
+    use rquansheng::bk4819_bitbang::{bk4819_sda_pin, Bk4819, Bk4819BitBang};
     use rquansheng::delay::CycleDelay;
     use rquansheng::display::DisplayMgr;
     use rquansheng::keyboard::KeyboardState;
@@ -98,7 +98,7 @@ mod app {
     #[shared]
     struct Shared {
         radio: RadioController<
-            Bk4819BitBang<Pin<Output>, Pin<Output>, Dp32g030BidiPin, CycleDelay>,
+            Bk4819BitBang<Pin<Output>, Pin<Output>, dp30g030_hal::gpio::FlexPin, CycleDelay>,
             UVK5RadioPlatform,
         >,
         /// Lock for PA10/PA11 shared between keypad scanning and EEPROM (bit-banged I2C).
@@ -130,7 +130,7 @@ mod app {
         // BK4819 bit-bang pins: PC0=SCN, PC1=SCL, PC2=SDA (bidirectional).
         let scn = Pin::new(Port::C, 0).into_push_pull_output(&cx.device.SYSCON, &cx.device.PORTCON);
         let scl = Pin::new(Port::C, 1).into_push_pull_output(&cx.device.SYSCON, &cx.device.PORTCON);
-        let sda = Dp32g030BidiPin::new(Port::C, 2, &cx.device.SYSCON, &cx.device.PORTCON).unwrap();
+        let sda = bk4819_sda_pin(Port::C, 2, &cx.device.SYSCON, &cx.device.PORTCON).unwrap();
 
         let delay_bb = CycleDelay::new(48_000_000);
         let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb);

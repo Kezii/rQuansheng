@@ -350,7 +350,9 @@ impl Adc {
             .write(|w| unsafe { w.adc_chx_eoc_ist().bits(ch.bit()) });
 
         // Read data from the per-channel DATA register (12-bit).
-        let v = match ch {
+        
+
+        match ch {
             Channel::Ch0 => regs.adc_ch0_data().read().adc_ch_data().bits(),
             Channel::Ch1 => regs.adc_ch1_data().read().adc_ch_data().bits(),
             Channel::Ch2 => regs.adc_ch2_data().read().adc_ch_data().bits(),
@@ -367,9 +369,7 @@ impl Adc {
             Channel::Ch13 => regs.adc_ch13_data().read().adc_ch_data().bits(),
             Channel::Ch14 => regs.adc_ch14_data().read().adc_ch_data().bits(),
             Channel::Ch15 => regs.adc_ch15_data().read().adc_ch_data().bits(),
-        };
-
-        v
+        }
     }
 }
 

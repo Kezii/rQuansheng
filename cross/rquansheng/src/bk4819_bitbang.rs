@@ -18,7 +18,7 @@ use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::{InputPin, OutputPin};
 
 use crate::bk4819_n;
-use dp30g030_hal::gpio::Port;
+use dp30g030_hal::gpio::{is_valid_pin, FlexPin, Port};
 
 /// A bidirectional GPIO line (used for BK4819 SDA/SDIO).
 ///
@@ -318,225 +318,47 @@ where
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct InvalidPin;
 
-/// DP32G030-specific bidirectional GPIO pin implementation for BK4819 SDA.
+/// Configure a GPIO pin for BK4819 SDA usage (DP32G030).
 ///
-/// This mirrors the reference firmware behavior:
-/// - on read: enable input buffer + set DIR=input
-/// - on write: disable input buffer + set DIR=output
-pub struct Dp32g030BidiPin {
+/// Mirrors the reference firmware behavior:
+/// - starts in output mode with input buffer disabled
+/// - reads temporarily enable input buffer + set DIR=input
+pub fn bk4819_sda_pin(
     port: Port,
     pin: u8,
+    syscon: &pac::SYSCON,
+    portcon: &pac::portcon::RegisterBlock,
+) -> Result<FlexPin, InvalidPin> {
+    if !is_valid_pin(port, pin) {
+        return Err(InvalidPin);
+    }
+
+    let fp = FlexPin::new(port, pin);
+    fp.configure_gpio(syscon, portcon);
+
+    // Default to output with input buffer disabled.
+    fp.set_input_enable(portcon, false);
+    fp.set_output(true);
+
+    Ok(fp)
 }
 
-impl Dp32g030BidiPin {
-    /// Configure a GPIO pin for BK4819 SDA usage.
-    ///
-    /// - selects GPIO function for the pin
-    /// - starts in output mode with input buffer disabled (like the C code)
-    pub fn new(
-        port: Port,
-        pin: u8,
-        syscon: &pac::SYSCON,
-        portcon: &pac::portcon::RegisterBlock,
-    ) -> Result<Self, InvalidPin> {
-        if !is_valid_pin(port, pin) {
-            return Err(InvalidPin);
-        }
-
-        enable_gpio_clock(syscon, port);
-        select_gpio_function(portcon, port, pin);
-
-        // Default to output with input buffer disabled.
-        set_input_enable(portcon, port, pin, false);
-        set_direction(port, pin, true);
-
-        Ok(Self { port, pin })
-    }
-
-    #[inline(always)]
-    fn read(&self) -> bool {
-        read_data_bit(self.port, self.pin)
-    }
-
-    #[inline(always)]
-    fn write(&self, high: bool) {
-        write_data_bit(self.port, self.pin, high)
-    }
-}
-
-impl embedded_hal::digital::ErrorType for Dp32g030BidiPin {
-    type Error = Infallible;
-}
-
-impl OutputPin for Dp32g030BidiPin {
-    #[inline]
-    fn set_low(&mut self) -> Result<(), Self::Error> {
-        self.write(false);
-        Ok(())
-    }
-
-    #[inline]
-    fn set_high(&mut self) -> Result<(), Self::Error> {
-        self.write(true);
-        Ok(())
-    }
-}
-
-impl InputPin for Dp32g030BidiPin {
-    #[inline]
-    fn is_high(&mut self) -> Result<bool, Self::Error> {
-        Ok(self.read())
-    }
-
-    #[inline]
-    fn is_low(&mut self) -> Result<bool, Self::Error> {
-        Ok(!self.read())
-    }
-}
-
-impl BidiPin for Dp32g030BidiPin {
+impl BidiPin for FlexPin {
     #[inline]
     fn set_to_input(&mut self) {
         unsafe {
             let portcon = &*pac::PORTCON::ptr();
-            set_input_enable(portcon, self.port, self.pin, true);
+            self.set_input_enable(portcon, true);
         }
-        set_direction(self.port, self.pin, false);
+        self.set_output(false);
     }
 
     #[inline]
     fn set_to_output(&mut self) {
         unsafe {
             let portcon = &*pac::PORTCON::ptr();
-            set_input_enable(portcon, self.port, self.pin, false);
+            self.set_input_enable(portcon, false);
         }
-        set_direction(self.port, self.pin, true);
+        self.set_output(true);
     }
-}
-
-// --- DP32G030 register helpers (local, to keep this module self-contained) ---
-
-#[inline(always)]
-fn is_valid_pin(port: Port, pin: u8) -> bool {
-    match port {
-        Port::A | Port::B => pin <= 15,
-        Port::C => pin <= 7,
-    }
-}
-
-#[inline(always)]
-fn enable_gpio_clock(syscon: &pac::SYSCON, port: Port) {
-    syscon.dev_clk_gate().modify(|_, w| match port {
-        Port::A => w.gpioa_clk_gate().set_bit(),
-        Port::B => w.gpiob_clk_gate().set_bit(),
-        Port::C => w.gpioc_clk_gate().set_bit(),
-    });
-}
-
-#[inline(always)]
-fn select_gpio_function(portcon: &pac::portcon::RegisterBlock, port: Port, pin: u8) {
-    // Function 0 selects GPIO for all PORTx_SEL* fields.
-    const GPIO_FUNCTION: u32 = 0;
-    let shift = ((pin % 8) as u32) * 4;
-    let mask = 0xFu32 << shift;
-
-    match port {
-        Port::A => {
-            if pin < 8 {
-                portcon.porta_sel0().modify(|r, w| unsafe {
-                    w.bits((r.bits() & !mask) | (GPIO_FUNCTION << shift))
-                });
-            } else {
-                portcon.porta_sel1().modify(|r, w| unsafe {
-                    w.bits((r.bits() & !mask) | (GPIO_FUNCTION << shift))
-                });
-            }
-        }
-        Port::B => {
-            if pin < 8 {
-                portcon.portb_sel0().modify(|r, w| unsafe {
-                    w.bits((r.bits() & !mask) | (GPIO_FUNCTION << shift))
-                });
-            } else {
-                portcon.portb_sel1().modify(|r, w| unsafe {
-                    w.bits((r.bits() & !mask) | (GPIO_FUNCTION << shift))
-                });
-            }
-        }
-        Port::C => {
-            portcon
-                .portc_sel0()
-                .modify(|r, w| unsafe { w.bits((r.bits() & !mask) | (GPIO_FUNCTION << shift)) });
-        }
-    }
-}
-
-#[inline(always)]
-fn set_input_enable(portcon: &pac::portcon::RegisterBlock, port: Port, pin: u8, enable: bool) {
-    let bit = 1u32 << (pin as u32);
-    let set = |v: u32| if enable { v | bit } else { v & !bit };
-
-    match port {
-        Port::A => portcon
-            .porta_ie()
-            .modify(|r, w| unsafe { w.bits(set(r.bits())) }),
-        Port::B => portcon
-            .portb_ie()
-            .modify(|r, w| unsafe { w.bits(set(r.bits())) }),
-        Port::C => portcon
-            .portc_ie()
-            .modify(|r, w| unsafe { w.bits(set(r.bits())) }),
-    }
-}
-
-#[inline(always)]
-fn set_direction(port: Port, pin: u8, output: bool) {
-    let bit = 1u32 << (pin as u32);
-    let set = |v: u32| if output { v | bit } else { v & !bit };
-
-    cortex_m::interrupt::free(|_| match port {
-        Port::A => unsafe {
-            let gpioa = &*pac::GPIOA::ptr();
-            gpioa.gpioa_dir().modify(|r, w| w.bits(set(r.bits())));
-        },
-        Port::B => unsafe {
-            let gpiob = &*pac::GPIOB::ptr();
-            gpiob.gpiob_dir().modify(|r, w| w.bits(set(r.bits())));
-        },
-        Port::C => unsafe {
-            let gpioc = &*pac::GPIOC::ptr();
-            gpioc.gpioc_dir().modify(|r, w| w.bits(set(r.bits())));
-        },
-    });
-}
-
-#[inline(always)]
-fn read_data_bit(port: Port, pin: u8) -> bool {
-    let mask = 1u32 << (pin as u32);
-    match port {
-        Port::A => unsafe { (&*pac::GPIOA::ptr()).gpioa_data().read().bits() & mask != 0 },
-        Port::B => unsafe { (&*pac::GPIOB::ptr()).gpiob_data().read().bits() & mask != 0 },
-        Port::C => unsafe { (&*pac::GPIOC::ptr()).gpioc_data().read().bits() & mask != 0 },
-    }
-}
-
-#[inline(always)]
-fn write_data_bit(port: Port, pin: u8, high: bool) {
-    let bit = 1u32 << (pin as u32);
-    let set = |v: u32| if high { v | bit } else { v & !bit };
-
-    cortex_m::interrupt::free(|_| match port {
-        Port::A => unsafe {
-            let gpioa = &*pac::GPIOA::ptr();
-            gpioa.gpioa_data().modify(|r, w| w.bits(set(r.bits())));
-        },
-        Port::B => unsafe {
-            let gpiob = &*pac::GPIOB::ptr();
-            gpiob.gpiob_data().modify(|r, w| w.bits(set(r.bits())));
-        },
-        Port::C => unsafe {
-            let gpioc = &*pac::GPIOC::ptr();
-            gpioc.gpioc_data().modify(|r, w| w.bits(set(r.bits())));
-        },
-    });
 }

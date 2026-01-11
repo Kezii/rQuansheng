@@ -71,7 +71,7 @@ impl FlexPin {
 
     /// Enable GPIO clock + select GPIO function for this pin.
     #[inline]
-    pub fn configure_gpio(&self, syscon: &pac::SYSCON, portcon: &pac::PORTCON) {
+    pub fn configure_gpio(&self, syscon: &pac::SYSCON, portcon: &pac::portcon::RegisterBlock) {
         debug_assert!(is_valid_pin(self.port, self.pin));
         enable_gpio_clock(syscon, self.port);
         select_gpio_function(portcon, self.port, self.pin);
@@ -79,14 +79,14 @@ impl FlexPin {
 
     /// Enable/disable input buffer.
     #[inline]
-    pub fn set_input_enable(&self, portcon: &pac::PORTCON, enable: bool) {
+    pub fn set_input_enable(&self, portcon: &pac::portcon::RegisterBlock, enable: bool) {
         debug_assert!(is_valid_pin(self.port, self.pin));
         set_input_enable(portcon, self.port, self.pin, enable);
     }
 
     /// Enable/disable open-drain pad.
     #[inline]
-    pub fn set_open_drain(&self, portcon: &pac::PORTCON, enable: bool) {
+    pub fn set_open_drain(&self, portcon: &pac::portcon::RegisterBlock, enable: bool) {
         debug_assert!(is_valid_pin(self.port, self.pin));
         set_open_drain(portcon, self.port, self.pin, enable);
     }
@@ -113,6 +113,37 @@ impl FlexPin {
     }
 }
 
+// Allow using FlexPin directly with embedded-hal digital traits (useful for bit-banged buses).
+impl ErrorType for FlexPin {
+    type Error = Infallible;
+}
+
+impl OutputPin for FlexPin {
+    #[inline]
+    fn set_low(&mut self) -> Result<(), Self::Error> {
+        self.write(false);
+        Ok(())
+    }
+
+    #[inline]
+    fn set_high(&mut self) -> Result<(), Self::Error> {
+        self.write(true);
+        Ok(())
+    }
+}
+
+impl InputPin for FlexPin {
+    #[inline]
+    fn is_high(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.read())
+    }
+
+    #[inline]
+    fn is_low(&mut self) -> Result<bool, Self::Error> {
+        Ok(!self.read())
+    }
+}
+
 impl Pin<Disabled> {
     /// Create a new pin handle.
     ///
@@ -136,7 +167,7 @@ impl Pin<Disabled> {
     pub fn into_push_pull_output(
         self,
         syscon: &pac::SYSCON,
-        portcon: &pac::PORTCON,
+        portcon: &pac::portcon::RegisterBlock,
     ) -> Pin<Output> {
         debug_assert!(is_valid_pin(self.port, self.pin));
         enable_gpio_clock(syscon, self.port);
@@ -159,6 +190,16 @@ impl Pin<Disabled> {
     /// - Sets direction bit to input
     #[inline]
     pub fn into_floating_input(self, syscon: &pac::SYSCON, portcon: &pac::PORTCON) -> Pin<Input> {
+        self.into_floating_input_rb(syscon, portcon)
+    }
+
+    /// Same as `into_floating_input` but takes a `RegisterBlock` (usable with `PORTCON::ptr()`).
+    #[inline]
+    pub fn into_floating_input_rb(
+        self,
+        syscon: &pac::SYSCON,
+        portcon: &pac::portcon::RegisterBlock,
+    ) -> Pin<Input> {
         debug_assert!(is_valid_pin(self.port, self.pin));
         enable_gpio_clock(syscon, self.port);
         select_gpio_function(portcon, self.port, self.pin);
@@ -182,6 +223,16 @@ impl Pin<Disabled> {
     /// - direction set to input
     #[inline]
     pub fn into_pull_up_input(self, syscon: &pac::SYSCON, portcon: &pac::PORTCON) -> Pin<Input> {
+        self.into_pull_up_input_rb(syscon, portcon)
+    }
+
+    /// Same as `into_pull_up_input` but takes a `RegisterBlock` (usable with `PORTCON::ptr()`).
+    #[inline]
+    pub fn into_pull_up_input_rb(
+        self,
+        syscon: &pac::SYSCON,
+        portcon: &pac::portcon::RegisterBlock,
+    ) -> Pin<Input> {
         debug_assert!(is_valid_pin(self.port, self.pin));
         enable_gpio_clock(syscon, self.port);
         select_gpio_function(portcon, self.port, self.pin);
@@ -245,8 +296,12 @@ impl InputPin for Pin<Input> {
     }
 }
 
+/// Return `true` if `pin` exists on the given `port`.
+///
+/// - Ports A/B have pins 0..=15
+/// - Port C has pins 0..=7
 #[inline(always)]
-fn is_valid_pin(port: Port, pin: u8) -> bool {
+pub const fn is_valid_pin(port: Port, pin: u8) -> bool {
     match port {
         Port::A | Port::B => pin <= 15,
         Port::C => pin <= 7,
@@ -263,7 +318,7 @@ fn enable_gpio_clock(syscon: &pac::SYSCON, port: Port) {
 }
 
 #[inline(always)]
-fn select_gpio_function(portcon: &pac::PORTCON, port: Port, pin: u8) {
+fn select_gpio_function(portcon: &pac::portcon::RegisterBlock, port: Port, pin: u8) {
     // Function 0 selects GPIO for all PORTx_SEL* fields (see SVD and C firmware headers).
     const GPIO_FUNCTION: u32 = 0;
     let shift = ((pin % 8) as u32) * 4;
@@ -301,7 +356,7 @@ fn select_gpio_function(portcon: &pac::PORTCON, port: Port, pin: u8) {
 }
 
 #[inline(always)]
-fn set_input_enable(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
+fn set_input_enable(portcon: &pac::portcon::RegisterBlock, port: Port, pin: u8, enable: bool) {
     let bit = 1u32 << (pin as u32);
     let set = |v: u32| if enable { v | bit } else { v & !bit };
 
@@ -325,7 +380,7 @@ fn set_input_enable(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
 }
 
 #[inline(always)]
-fn set_open_drain(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
+fn set_open_drain(portcon: &pac::portcon::RegisterBlock, port: Port, pin: u8, enable: bool) {
     let bit = 1u32 << (pin as u32);
     let set = |v: u32| if enable { v | bit } else { v & !bit };
 
@@ -349,7 +404,7 @@ fn set_open_drain(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
 }
 
 #[inline(always)]
-fn set_pull_up(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
+fn set_pull_up(portcon: &pac::portcon::RegisterBlock, port: Port, pin: u8, enable: bool) {
     let bit = 1u32 << (pin as u32);
     let set = |v: u32| if enable { v | bit } else { v & !bit };
 
@@ -373,7 +428,7 @@ fn set_pull_up(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
 }
 
 #[inline(always)]
-fn set_pull_down(portcon: &pac::PORTCON, port: Port, pin: u8, enable: bool) {
+fn set_pull_down(portcon: &pac::portcon::RegisterBlock, port: Port, pin: u8, enable: bool) {
     let bit = 1u32 << (pin as u32);
     let set = |v: u32| if enable { v | bit } else { v & !bit };
 
