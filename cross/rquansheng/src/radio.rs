@@ -10,9 +10,9 @@ use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
 use crate::bk1080::{Bk1080, Bk1080Bus};
+use crate::bk4819::regs::{AfOutSel, Reg3F};
 use crate::bk4819::{Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk4819_bitbang::Bk4819Bus;
-use crate::bk4819_n::{AfOutSel, Reg3F};
 use crate::dialer::Dialer;
 use crate::display::RenderingMgr;
 use crate::frequencies::{calculate_output_power_setting, FrequencyBand};

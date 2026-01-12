@@ -10,7 +10,7 @@ use bitfield_struct::{bitenum, bitfield};
 use bk4819_reg_macros::address;
 
 // Reuse the same address trait as BK4819: `#[address(..)]` implements this.
-pub use crate::bk4819_n::RegisterAddress;
+pub use crate::bk4819::regs::RegisterAddress;
 
 /// BK1080 FM band selection (REG_05[7:6]).
 ///

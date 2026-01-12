@@ -17,8 +17,9 @@ use dp32g030 as pac;
 use embedded_hal::delay::DelayNs;
 use embedded_hal::digital::{InputPin, OutputPin};
 
-use crate::bk4819_n;
 use dp30g030_hal::gpio::{is_valid_pin, FlexPin, Port};
+
+use crate::bk4819::regs::Bk4819Register;
 
 /// A bidirectional GPIO line (used for BK4819 SDA/SDIO).
 ///
@@ -40,8 +41,8 @@ pub trait Bk4819Bus {
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error>;
     fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error>;
 
-    fn write_reg<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error>;
-    fn read_reg<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error>;
+    fn write_reg<R: Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error>;
+    fn read_reg<R: Bk4819Register>(&mut self) -> Result<R, Self::Error>;
 }
 
 /// Bit-banged BK4819 bus implementation.
@@ -216,13 +217,13 @@ where
         let _ = self.sda.set_high();
     }
 
-    pub fn write_reg_n<R: bk4819_n::Bk4819Register>(&mut self, reg: R) {
+    pub fn write_reg_n<R: Bk4819Register>(&mut self, reg: R) {
         self.write_reg_raw(R::ADDRESS, reg.serialize());
     }
 
-    pub fn read_reg_n<R: bk4819_n::Bk4819Register>(&mut self) -> R {
+    pub fn read_reg_n<R: Bk4819Register>(&mut self) -> R {
         let value = self.read_reg_raw(R::ADDRESS);
-        <R as bk4819_n::Bk4819Register>::deserialize(value)
+        <R as Bk4819Register>::deserialize(value)
     }
 }
 
@@ -248,13 +249,13 @@ where
     }
 
     #[inline]
-    fn write_reg<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error> {
+    fn write_reg<R: Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error> {
         Bk4819BitBang::write_reg_n(self, reg);
         Ok(())
     }
 
     #[inline]
-    fn read_reg<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, Self::Error> {
+    fn read_reg<R: Bk4819Register>(&mut self) -> Result<R, Self::Error> {
         let value = Bk4819BitBang::read_reg_n::<R>(self);
         Ok(value)
     }
@@ -292,25 +293,13 @@ where
     }
 
     #[inline]
-    pub fn write_reg<R: bk4819_n::Bk4819Register>(&mut self, reg: R) -> Result<(), BUS::Error> {
+    pub fn write_reg<R: Bk4819Register>(&mut self, reg: R) -> Result<(), BUS::Error> {
         self.bus.write_reg(reg)
     }
 
     #[inline]
-    pub fn read_reg<R: bk4819_n::Bk4819Register>(&mut self) -> Result<R, BUS::Error> {
+    pub fn read_reg<R: Bk4819Register>(&mut self) -> Result<R, BUS::Error> {
         self.bus.read_reg::<R>()
-    }
-
-    /// Read-modify-write helper.
-    #[inline]
-    pub fn update_reg<F>(&mut self, reg: u8, f: F) -> Result<u16, BUS::Error>
-    where
-        F: FnOnce(u16) -> u16,
-    {
-        let cur = self.read_reg_raw(reg)?;
-        let next = f(cur);
-        self.write_reg_raw(reg, next)?;
-        Ok(next)
     }
 }
 

@@ -7,6 +7,7 @@ use rquansheng::{self as _}; // global logger + panicking-behavior + memory layo
 use dp30g030_hal as _;
 
 use rtic_monotonics::systick::prelude::*;
+use static_cell::StaticCell;
 
 systick_monotonic!(Mono, 1_00);
 
@@ -34,6 +35,7 @@ defmt::timestamp!("{}", {
     }
 });
 
+static SERIAL: StaticCell<dp30g030_hal::uart::Uart1> = StaticCell::new();
 // TODO(7) Configure the `rtic::app` macro
 #[rtic::app(
     device = dp30g030_hal,
@@ -43,15 +45,16 @@ defmt::timestamp!("{}", {
 )]
 
 mod app {
+    use defmt::info;
     use dp30g030_hal::adc;
     use dp30g030_hal::gpio::{Input, Output, Pin, Port};
-    use dp30g030_hal::uart;
     use embedded_hal::digital::{InputPin, OutputPin};
     use embedded_io_async::{Read as AsyncRead, Write as AsyncWrite};
     use heapless::Vec;
     use rquansheng::bk1080::{Bk1080, Bk1080BitBangBus};
     use rquansheng::bk4819::Bk4819Driver;
     use rquansheng::bk4819_bitbang::{bk4819_sda_pin, Bk4819, Bk4819BitBang};
+    use rquansheng::board::get_uart;
     use rquansheng::delay::CycleDelay;
     use rquansheng::display::DisplayMgr;
     use rquansheng::keyboard::KeyboardState;
@@ -61,7 +64,7 @@ mod app {
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
     use rtic_sync::signal::{Signal, SignalReader, SignalWriter};
 
-    use crate::Mono;
+    use crate::{Mono, SERIAL};
 
     #[derive(Debug)]
     enum ReadLineError {
@@ -111,7 +114,6 @@ mod app {
     // Local resources go here
     #[local]
     struct Local {
-        uart1: Option<uart::Uart1>,
         pin_ptt: Pin<Input>,
         adc: adc::Adc,
         keyboard_state: KeyboardState,
@@ -125,6 +127,17 @@ mod app {
 
     #[init(local = [poke_display_update: Signal<bool> = Signal::new()])]
     fn init(cx: init::Context) -> (Shared, Local) {
+        let serial_logs = false;
+
+        if serial_logs {
+            let uart1 = get_uart();
+            defmt_serial::defmt_serial(SERIAL.init(uart1));
+        } else {
+            uart_task::spawn().ok();
+        }
+
+        info!("Hello!");
+
         // this pin is in platform too, but we duplicate it because it's used in the uart task
         let pin_flashlight =
             Pin::new(Port::C, 3).into_push_pull_output(&cx.device.SYSCON, &cx.device.PORTCON);
@@ -151,24 +164,6 @@ mod app {
         let pin_ptt: Pin<Input> =
             Pin::new(Port::C, 5).into_pull_up_input(&cx.device.SYSCON, &cx.device.PORTCON);
 
-        // UART example: UART1 on PA7 (TX) / PA8 (RX), 38400-8N1.
-        let uart1_tx = uart::TxPin::<dp30g030_hal::UART1>::new(Pin::new(Port::A, 7)).unwrap();
-        let uart1_rx = uart::RxPin::<dp30g030_hal::UART1>::new(Pin::new(Port::A, 8)).unwrap();
-        let uart1_cfg = uart::Config::new(48_000_000, 38_400);
-        let uart1: uart::Uart1 = uart::Uart::<
-            dp30g030_hal::UART1,
-            uart::TxPin<dp30g030_hal::UART1>,
-            uart::RxPin<dp30g030_hal::UART1>,
-        >::new(
-            cx.device.UART1,
-            &cx.device.SYSCON,
-            &cx.device.PORTCON,
-            uart1_tx,
-            uart1_rx,
-            uart1_cfg,
-        )
-        .unwrap();
-
         // SARADC: battery voltage is on SARADC CH4, pin PA9.
         // C firmware conversion: v_10mV = raw * 760 / gBatteryCalibration[3].
         // We do not use EEPROM calibration here; keep a default in the middle
@@ -188,17 +183,17 @@ mod app {
 
         let (display_update_writer, display_update_reader) = cx.local.poke_display_update.split();
 
+        info!("Initializing display");
         let display = DisplayMgr::new(cx.device.SPI0, &cx.device.SYSCON, &cx.device.PORTCON);
 
         Mono::start(cx.core.SYST, 48_000_000);
 
-        defmt::info!("init");
+        info!("Initializing radio");
 
         if radio.init().is_err() {
             defmt::warn!("radio init failed");
         }
 
-        uart_task::spawn().ok();
         radio_10ms_task::spawn().ok();
         display_task::spawn().ok();
 
@@ -212,7 +207,6 @@ mod app {
             },
             Local {
                 // Initialization of local resources go here
-                uart1: Some(uart1),
                 pin_ptt,
                 adc,
                 display,
@@ -234,16 +228,11 @@ mod app {
         }
     }
 
-    #[task(priority = 1, local = [uart1, pin_flashlight], shared = [radio, i2c_lock])]
+    #[task(priority = 1, local = [pin_flashlight], shared = [radio, i2c_lock])]
     async fn uart_task(mut cx: uart_task::Context) {
         use rquansheng::radio_platform::RadioPlatform;
 
-        //defmt_serial::defmt_serial(crate::SERIAL.init(uart1));
-        let uart1 = cx
-            .local
-            .uart1
-            .take()
-            .expect("uart_task started without uart1");
+        let uart1 = get_uart();
         let (mut tx, mut _rx) = uart1.split();
 
         loop {

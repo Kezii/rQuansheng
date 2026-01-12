@@ -10,7 +10,7 @@ use panic_probe as _;
 pub mod bk1080;
 pub mod bk4819;
 pub mod bk4819_bitbang;
-pub mod bk4819_n;
+pub mod board;
 pub mod delay;
 pub mod dialer;
 pub mod display;

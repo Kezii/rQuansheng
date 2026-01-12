@@ -27,36 +27,6 @@ rQuansheng can run on a normal PC, controlling the radio chip on a physical devi
 ![photo](docs/screenshot.jpg)
 
 
-## bk4819
-
-There are two implementation for driving the bk4819
-
-The old, deprecated c-style interface with constants and bitwise operations, and the new struct-based implementation (`cross/rquansheng/src/bk4819_n.rs`)
-
-For now, a lot of functionality is stubbed in the old way, it's supposed to be rewritten to the new interface
-
-Example of the old interface:
-```rust
-
-self.write_register_raw(
-    Register_old::Reg4E,
-    (1u16 << 14) | (5u16 << 11) | (6u16 << 9) | thresholds.open_glitch as u16,
-)?;
-
-```
-
-Example of the new interface:
-```rust
-self.write_register(
-    Reg48::new()
-        .with_af_dac_gain(8)
-        .with_afrx_gain2(58)
-        .with_afrx_gain1(0)
-        .with_undocumented(11),
-)?;
-```
-
-
 # Roadmap
 
 ## Basics
@@ -71,7 +41,6 @@ self.write_register(
 - [x] keyboard driver and events
 - [x] display driver
 - [x] eeprom driver 
-- [ ] bk4819 hal refactoring (partial)
 
 ## High level
 - [x] fm radio rx

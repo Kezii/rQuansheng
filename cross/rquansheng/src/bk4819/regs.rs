@@ -1,196 +1,1820 @@
-#![deprecated]
-//! BK4819 register map and bitfield helpers.
-//!
-//! Ported from `uv-k5-firmware-custom/driver/bk4819-regs.h`.
+use bitfield_struct::{bitenum, bitfield};
 
-/// BK4819 register address.
+use bk4819_reg_macros::address;
+
+// THIS DRIVER IS A BEST EFFORT ATTEMPT AT PARSING THE DOCUMENTATION
+// WARNING: THIS DRIVER IS NOT GUARANTEED TO BE CORRECT
+// WARNING: THIS HAS BEEN TOUCHED BY AN LLM
+// WARNING: EVEN IF CORRECT, SOME FIELDS ARE UNDOCUMENTED IN THE DOCUMENTATION
+//          BUT THEY ARE USED IN THE ORIGINAL FIRMWARE
+
+/// Implemented by each BK4819 register struct to provide the register address.
 ///
-/// Matches the `BK4819_REGISTER_t` enum in the C reference.
-#[repr(u8)]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Register_old {
-    Reg00 = 0x00,
-    Reg02 = 0x02,
-    Reg06 = 0x06,
-    Reg07 = 0x07,
-    Reg08 = 0x08,
-    Reg09 = 0x09,
-    Reg0B = 0x0B,
-    Reg0C = 0x0C,
-    Reg0D = 0x0D,
-    Reg0E = 0x0E,
-    Reg10 = 0x10,
-    Reg11 = 0x11,
-    Reg12 = 0x12,
-    Reg13 = 0x13,
-    Reg14 = 0x14,
-    Reg19 = 0x19,
-    Reg1F = 0x1F,
-    Reg20 = 0x20,
-    Reg21 = 0x21,
-    Reg24 = 0x24,
-    Reg28 = 0x28,
-    Reg29 = 0x29,
-    Reg2B = 0x2B,
-    Reg30 = 0x30,
-    Reg31 = 0x31,
-    Reg32 = 0x32,
-    Reg33 = 0x33,
-    Reg36 = 0x36,
-    Reg37 = 0x37,
-    Reg38 = 0x38,
-    Reg39 = 0x39,
-    Reg3A = 0x3A,
-    Reg3B = 0x3B,
-    Reg3C = 0x3C,
-    Reg3D = 0x3D,
-    Reg3E = 0x3E,
-    Reg3F = 0x3F,
-    Reg43 = 0x43,
-    Reg46 = 0x46,
-    Reg47 = 0x47,
-    Reg48 = 0x48,
-    Reg49 = 0x49,
-    Reg4D = 0x4D,
-    Reg4E = 0x4E,
-    Reg4F = 0x4F,
-    Reg50 = 0x50,
-    Reg51 = 0x51,
-    Reg52 = 0x52,
-    Reg58 = 0x58,
-    Reg59 = 0x59,
-    Reg5A = 0x5A,
-    Reg5B = 0x5B,
-    Reg5C = 0x5C,
-    Reg5D = 0x5D,
-    Reg5F = 0x5F,
-    Reg63 = 0x63,
-    Reg64 = 0x64,
-    Reg65 = 0x65,
-    Reg67 = 0x67,
-    Reg68 = 0x68,
-    Reg69 = 0x69,
-    Reg6A = 0x6A,
-    Reg6F = 0x6F,
-    Reg70 = 0x70,
-    Reg71 = 0x71,
-    Reg72 = 0x72,
-    Reg73 = 0x73,
-    Reg78 = 0x78,
-    Reg79 = 0x79,
-    Reg7A = 0x7A,
-    Reg7B = 0x7B,
-    Reg7C = 0x7C,
-    Reg7D = 0x7D,
-    Reg7E = 0x7E,
-}
+/// `#[address(0x..)]` auto-implements this for the annotated struct.
+pub trait RegisterAddress {
+    const ADDRESS: u8;
 
-impl Register_old {
     #[inline]
-    pub const fn as_u8(self) -> u8 {
-        self as u8
+    fn get_address() -> u8
+    where
+        Self: Sized,
+    {
+        Self::ADDRESS
     }
 }
 
-// --- REG_07 ---
+/// Marker trait for BK4819 register value types.
+///
+/// For bitfield structs this is usually satisfied by the auto-generated `From<u16>` / `Into<u16>`.
+pub trait Bk4819Register:
+    RegisterAddress + Copy + From<u16> + Into<u16> + core::fmt::Debug + Default
+{
+    #[inline]
+    fn serialize(self) -> u16 {
+        self.into()
+    }
 
-pub const REG_07_SHIFT_FREQUENCY_MODE: u16 = 13;
-pub const REG_07_SHIFT_FREQUENCY: u16 = 0;
+    #[inline]
+    fn deserialize(data: u16) -> Self {
+        Self::from(data)
+    }
+}
 
-pub const REG_07_MODE_CTC1: u16 = 0u16 << REG_07_SHIFT_FREQUENCY_MODE;
-pub const REG_07_MODE_CTC2: u16 = 1u16 << REG_07_SHIFT_FREQUENCY_MODE;
-pub const REG_07_MODE_CDCSS: u16 = 2u16 << REG_07_SHIFT_FREQUENCY_MODE;
+impl<T> Bk4819Register for T where
+    T: RegisterAddress + Copy + From<u16> + Into<u16> + core::fmt::Debug + Default
+{
+}
 
-// --- REG_24 ---
+/// Auto-generated register bitfields/enums from `BK4819V3.svd`.
+///
+/// Note: This is a best-effort mapping; verify against the datasheet for tricky fields.
 
-pub const REG_24_SHIFT_UNKNOWN_15: u16 = 15;
-pub const REG_24_SHIFT_THRESHOLD: u16 = 7;
-pub const REG_24_SHIFT_UNKNOWN_6: u16 = 6;
-pub const REG_24_SHIFT_ENABLE: u16 = 5;
-pub const REG_24_SHIFT_SELECT: u16 = 4;
-pub const REG_24_SHIFT_MAX_SYMBOLS: u16 = 0;
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg00SoftReset {
+    #[fallback]
+    /// Normal operation
+    Normal = 0,
+    /// Reset
+    Reset = 1,
+}
 
-pub const REG_24_ENABLE: u16 = 1u16 << REG_24_SHIFT_ENABLE;
-pub const REG_24_DISABLE: u16 = 0u16 << REG_24_SHIFT_ENABLE;
-pub const REG_24_SELECT_DTMF: u16 = 1u16 << REG_24_SHIFT_SELECT;
-pub const REG_24_SELECT_SELCALL: u16 = 0u16 << REG_24_SHIFT_SELECT;
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg07Mode {
+    #[fallback]
+    /// CTC1 frequency control word in WORD[12:0]
+    Ctc1 = 0,
+    /// CTC2 (Tail 55 Hz RX detection) control word in WORD[12:0]
+    Ctc2 = 1,
+    /// CDCSS 134.4 Hz baud control word in WORD[12:0]
+    Cdcss1344 = 2,
+}
 
-// --- REG_30 ---
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg08CodeHigh {
+    #[fallback]
+    /// CDCSS Low 12 bits
+    Low = 0,
+    /// CDCSS High 12 bits
+    High = 1,
+}
 
-pub const REG_30_SHIFT_ENABLE_VCO_CALIB: u16 = 15;
-pub const REG_30_SHIFT_ENABLE_UNKNOWN: u16 = 14;
-pub const REG_30_SHIFT_ENABLE_RX_LINK: u16 = 10;
-pub const REG_30_SHIFT_ENABLE_AF_DAC: u16 = 9;
-pub const REG_30_SHIFT_ENABLE_DISC_MODE: u16 = 8;
-pub const REG_30_SHIFT_ENABLE_PLL_VCO: u16 = 4;
-pub const REG_30_SHIFT_ENABLE_PA_GAIN: u16 = 3;
-pub const REG_30_SHIFT_ENABLE_MIC_ADC: u16 = 2;
-pub const REG_30_SHIFT_ENABLE_TX_DSP: u16 = 1;
-pub const REG_30_SHIFT_ENABLE_RX_DSP: u16 = 0;
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg0BFskCrcPass {
+    #[fallback]
+    /// CRC Fail
+    Fail = 0,
+    /// CRC Pass
+    Pass = 1,
+}
 
-pub const REG_30_ENABLE_VCO_CALIB: u16 = 1u16 << REG_30_SHIFT_ENABLE_VCO_CALIB;
-pub const REG_30_DISABLE_VCO_CALIB: u16 = 0u16 << REG_30_SHIFT_ENABLE_VCO_CALIB;
-pub const REG_30_ENABLE_UNKNOWN: u16 = 1u16 << REG_30_SHIFT_ENABLE_UNKNOWN;
-pub const REG_30_DISABLE_UNKNOWN: u16 = 0u16 << REG_30_SHIFT_ENABLE_UNKNOWN;
-pub const REG_30_ENABLE_RX_LINK: u16 = 0xFu16 << REG_30_SHIFT_ENABLE_RX_LINK;
-pub const REG_30_DISABLE_RX_LINK: u16 = 0u16 << REG_30_SHIFT_ENABLE_RX_LINK;
-pub const REG_30_ENABLE_AF_DAC: u16 = 1u16 << REG_30_SHIFT_ENABLE_AF_DAC;
-pub const REG_30_DISABLE_AF_DAC: u16 = 0u16 << REG_30_SHIFT_ENABLE_AF_DAC;
-pub const REG_30_ENABLE_DISC_MODE: u16 = 1u16 << REG_30_SHIFT_ENABLE_DISC_MODE;
-pub const REG_30_DISABLE_DISC_MODE: u16 = 0u16 << REG_30_SHIFT_ENABLE_DISC_MODE;
-pub const REG_30_ENABLE_PLL_VCO: u16 = 0xFu16 << REG_30_SHIFT_ENABLE_PLL_VCO;
-pub const REG_30_DISABLE_PLL_VCO: u16 = 0u16 << REG_30_SHIFT_ENABLE_PLL_VCO;
-pub const REG_30_ENABLE_PA_GAIN: u16 = 1u16 << REG_30_SHIFT_ENABLE_PA_GAIN;
-pub const REG_30_DISABLE_PA_GAIN: u16 = 0u16 << REG_30_SHIFT_ENABLE_PA_GAIN;
-pub const REG_30_ENABLE_MIC_ADC: u16 = 1u16 << REG_30_SHIFT_ENABLE_MIC_ADC;
-pub const REG_30_DISABLE_MIC_ADC: u16 = 0u16 << REG_30_SHIFT_ENABLE_MIC_ADC;
-pub const REG_30_ENABLE_TX_DSP: u16 = 1u16 << REG_30_SHIFT_ENABLE_TX_DSP;
-pub const REG_30_DISABLE_TX_DSP: u16 = 0u16 << REG_30_SHIFT_ENABLE_TX_DSP;
-pub const REG_30_ENABLE_RX_DSP: u16 = 1u16 << REG_30_SHIFT_ENABLE_RX_DSP;
-pub const REG_30_DISABLE_RX_DSP: u16 = 0u16 << REG_30_SHIFT_ENABLE_RX_DSP;
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg0CCtcssPhaseShift {
+    #[fallback]
+    /// No phase shift
+    None = 0,
+    /// 120° phase shift
+    Deg120 = 1,
+    /// 180° phase shift
+    Deg180 = 2,
+    /// 240° phase shift
+    Deg240 = 3,
+}
 
-// --- REG_51 ---
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg10PgaGain {
+    #[fallback]
+    Db0 = 0b111,
+    DbMinus3 = 0b110,
+    DbMinus6 = 0b101,
+    DbMinus9 = 0b100,
+    DbMinus15 = 0b011,
+    DbMinus21 = 0b010,
+    DbMinus27 = 0b001,
+    DbMinus33 = 0b000,
+}
 
-pub const REG_51_SHIFT_ENABLE_CXCSS: u16 = 15;
-pub const REG_51_SHIFT_GPIO6_PIN2_INPUT: u16 = 14;
-pub const REG_51_SHIFT_TX_CDCSS_POLARITY: u16 = 13;
-pub const REG_51_SHIFT_CXCSS_MODE: u16 = 12;
-pub const REG_51_SHIFT_CDCSS_BIT_WIDTH: u16 = 11;
-pub const REG_51_SHIFT_1050HZ_DETECTION: u16 = 10;
-pub const REG_51_SHIFT_AUTO_CDCSS_BW: u16 = 9;
-pub const REG_51_SHIFT_AUTO_CTCSS_BW: u16 = 8;
-pub const REG_51_SHIFT_CXCSS_TX_GAIN1: u16 = 0;
+impl Reg10PgaGain {
+    pub fn to_db(self) -> i8 {
+        match self {
+            Reg10PgaGain::Db0 => 0,
+            Reg10PgaGain::DbMinus3 => -3,
+            Reg10PgaGain::DbMinus6 => -6,
+            Reg10PgaGain::DbMinus9 => -9,
+            Reg10PgaGain::DbMinus15 => -15,
+            Reg10PgaGain::DbMinus21 => -21,
+            Reg10PgaGain::DbMinus27 => -27,
+            Reg10PgaGain::DbMinus33 => -33,
+        }
+    }
+}
 
-pub const REG_51_ENABLE_CXCSS: u16 = 1u16 << REG_51_SHIFT_ENABLE_CXCSS;
-pub const REG_51_DISABLE_CXCSS: u16 = 0u16 << REG_51_SHIFT_ENABLE_CXCSS;
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg10MixerGain {
+    #[fallback]
+    Db0 = 0b11,
+    DbMinus3 = 0b10,
+    DbMinus6 = 0b01,
+    DbMinus8 = 0b00,
+}
 
-pub const REG_51_GPIO6_PIN2_INPUT: u16 = 1u16 << REG_51_SHIFT_GPIO6_PIN2_INPUT;
-pub const REG_51_GPIO6_PIN2_NORMAL: u16 = 0u16 << REG_51_SHIFT_GPIO6_PIN2_INPUT;
+impl Reg10MixerGain {
+    pub fn to_db(self) -> i8 {
+        match self {
+            Reg10MixerGain::Db0 => 0,
+            Reg10MixerGain::DbMinus3 => -3,
+            Reg10MixerGain::DbMinus6 => -6,
+            Reg10MixerGain::DbMinus8 => -8,
+        }
+    }
+}
 
-pub const REG_51_TX_CDCSS_NEGATIVE: u16 = 1u16 << REG_51_SHIFT_TX_CDCSS_POLARITY;
-pub const REG_51_TX_CDCSS_POSITIVE: u16 = 0u16 << REG_51_SHIFT_TX_CDCSS_POLARITY;
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg10LnaGain {
+    #[fallback]
+    Db0 = 0b111,
+    DbMinus2 = 0b110,
+    DbMinus4 = 0b101,
+    DbMinus6 = 0b100,
+    DbMinus9 = 0b011,
+    DbMinus14 = 0b010,
+    DbMinus19 = 0b001,
+    DbMinus24 = 0b000,
+}
 
-pub const REG_51_MODE_CTCSS: u16 = 1u16 << REG_51_SHIFT_CXCSS_MODE;
-pub const REG_51_MODE_CDCSS: u16 = 0u16 << REG_51_SHIFT_CXCSS_MODE;
+impl Reg10LnaGain {
+    pub fn to_db(self) -> i8 {
+        match self {
+            Reg10LnaGain::Db0 => 0,
+            Reg10LnaGain::DbMinus2 => -2,
+            Reg10LnaGain::DbMinus4 => -4,
+            Reg10LnaGain::DbMinus6 => -6,
+            Reg10LnaGain::DbMinus9 => -9,
+            Reg10LnaGain::DbMinus14 => -14,
+            Reg10LnaGain::DbMinus19 => -19,
+            Reg10LnaGain::DbMinus24 => -24,
+        }
+    }
+}
 
-pub const REG_51_CDCSS_24_BIT: u16 = 1u16 << REG_51_SHIFT_CDCSS_BIT_WIDTH;
-pub const REG_51_CDCSS_23_BIT: u16 = 0u16 << REG_51_SHIFT_CDCSS_BIT_WIDTH;
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg10LnaGainShort {
+    #[fallback]
+    Db0 = 0b11,
+    DbMinus11 = 0b10,
+    DbMinus16 = 0b01,
+    DbMinus19 = 0b00,
+}
 
-pub const REG_51_1050HZ_DETECTION: u16 = 1u16 << REG_51_SHIFT_1050HZ_DETECTION;
-pub const REG_51_1050HZ_NO_DETECTION: u16 = 0u16 << REG_51_SHIFT_1050HZ_DETECTION;
+impl Reg10LnaGainShort {
+    pub fn to_db(self) -> i8 {
+        match self {
+            Reg10LnaGainShort::Db0 => 0,
+            Reg10LnaGainShort::DbMinus11 => -11,
+            Reg10LnaGainShort::DbMinus16 => -16,
+            Reg10LnaGainShort::DbMinus19 => -19,
+        }
+    }
+}
 
-pub const REG_51_AUTO_CDCSS_BW_DISABLE: u16 = 1u16 << REG_51_SHIFT_AUTO_CDCSS_BW;
-pub const REG_51_AUTO_CDCSS_BW_ENABLE: u16 = 0u16 << REG_51_SHIFT_AUTO_CDCSS_BW;
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Gains {
+    pub lna_short: i8,
+    pub lna: i8,
+    pub mixer: i8,
+    pub pga: i8,
+}
 
-pub const REG_51_AUTO_CTCSS_BW_DISABLE: u16 = 1u16 << REG_51_SHIFT_AUTO_CTCSS_BW;
-pub const REG_51_AUTO_CTCSS_BW_ENABLE: u16 = 0u16 << REG_51_SHIFT_AUTO_CTCSS_BW;
+// a bit repetitive but it is what it is
+impl Gains {
+    pub fn from_reg10(reg10: Reg10) -> Self {
+        Self {
+            lna_short: reg10.lna_gain_short().to_db(),
+            lna: reg10.lna_gain().to_db(),
+            mixer: reg10.mixer_gain().to_db(),
+            pga: reg10.pga_gain().to_db(),
+        }
+    }
 
-// --- REG_70 ---
+    pub fn from_reg11(reg11: Reg11) -> Self {
+        Self {
+            lna_short: reg11.lna_gain_short().to_db(),
+            lna: reg11.lna_gain().to_db(),
+            mixer: reg11.mixer_gain().to_db(),
+            pga: reg11.pga_gain().to_db(),
+        }
+    }
 
-pub const REG_70_SHIFT_ENABLE_TONE1: u16 = 15;
-pub const REG_70_SHIFT_TONE1_TUNING_GAIN: u16 = 8;
-pub const REG_70_SHIFT_ENABLE_TONE2: u16 = 7;
-pub const REG_70_SHIFT_TONE2_TUNING_GAIN: u16 = 0;
+    pub fn from_reg12(reg12: Reg12) -> Self {
+        Self {
+            lna_short: reg12.lna_gain_short().to_db(),
+            lna: reg12.lna_gain().to_db(),
+            mixer: reg12.mixer_gain().to_db(),
+            pga: reg12.pga_gain().to_db(),
+        }
+    }
 
-pub const REG_70_ENABLE_TONE1: u16 = 1u16 << REG_70_SHIFT_ENABLE_TONE1;
-pub const REG_70_ENABLE_TONE2: u16 = 1u16 << REG_70_SHIFT_ENABLE_TONE2;
+    pub fn from_reg13(reg13: Reg13) -> Self {
+        Self {
+            lna_short: reg13.lna_gain_short().to_db(),
+            lna: reg13.lna_gain().to_db(),
+            mixer: reg13.mixer_gain().to_db(),
+            pga: reg13.pga_gain().to_db(),
+        }
+    }
+
+    pub fn from_reg14(reg14: Reg14) -> Self {
+        Self {
+            lna_short: reg14.lna_gain_short().to_db(),
+            lna: reg14.lna_gain().to_db(),
+            mixer: reg14.mixer_gain().to_db(),
+            pga: reg14.pga_gain().to_db(),
+        }
+    }
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg34Gpio4Type {
+    #[fallback]
+    /// High/Low
+    HighLow = 0,
+    /// Interrupt
+    Interrupt = 1,
+    /// Squelch
+    Squelch = 2,
+    /// VoX
+    Vox = 3,
+    /// CTCSS/CDCSS Compared Result
+    CtcssCdcssResult = 4,
+    /// CTCSS Compared Result
+    CtcssResult = 5,
+    /// CDCSS Compared Result
+    CdcssResult = 6,
+    /// Tail Detected Result
+    TailDetected = 7,
+    /// DTMF/5Tone Symbol Received Flag
+    Dtmf5toneFlag = 8,
+    /// CTCSS/CDCSS Digital Wave
+    CtcssCdcssWave = 9,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg34Gpio5Type {
+    #[fallback]
+    /// High/Low
+    HighLow = 0,
+    /// Interrupt
+    Interrupt = 1,
+    /// Squelch
+    Squelch = 2,
+    /// VoX
+    Vox = 3,
+    /// CTCSS/CDCSS Compared Result
+    CtcssCdcssResult = 4,
+    /// CTCSS Compared Result
+    CtcssResult = 5,
+    /// CDCSS Compared Result
+    CdcssResult = 6,
+    /// Tail Detected Result
+    TailDetected = 7,
+    /// DTMF/5Tone Symbol Received Flag
+    Dtmf5toneFlag = 8,
+    /// CTCSS/CDCSS Digital Wave
+    CtcssCdcssWave = 9,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg34Gpio6Type {
+    #[fallback]
+    /// High/Low
+    HighLow = 0,
+    /// Interrupt
+    Interrupt = 1,
+    /// Squelch
+    Squelch = 2,
+    /// VoX
+    Vox = 3,
+    /// CTCSS/CDCSS Compared Result
+    CtcssCdcssResult = 4,
+    /// CTCSS Compared Result
+    CtcssResult = 5,
+    /// CDCSS Compared Result
+    CdcssResult = 6,
+    /// Tail Detected Result
+    TailDetected = 7,
+    /// DTMF/5Tone Symbol Received Flag
+    Dtmf5toneFlag = 8,
+    /// CTCSS/CDCSS Digital Wave
+    CtcssCdcssWave = 9,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg35Gpio0Type {
+    #[fallback]
+    /// High/Low
+    HighLow = 0,
+    /// Interrupt
+    Interrupt = 1,
+    /// Squelch
+    Squelch = 2,
+    /// VoX
+    Vox = 3,
+    /// CTCSS/CDCSS Compared Result
+    CtcssCdcssResult = 4,
+    /// CTCSS Compared Result
+    CtcssResult = 5,
+    /// CDCSS Compared Result
+    CdcssResult = 6,
+    /// Tail Detected Result
+    TailDetected = 7,
+    /// DTMF/5Tone Symbol Received Flag
+    Dtmf5toneFlag = 8,
+    /// CTCSS/CDCSS Digital Wave
+    CtcssCdcssWave = 9,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg35Gpio1Type {
+    #[fallback]
+    /// High/Low
+    HighLow = 0,
+    /// Interrupt
+    Interrupt = 1,
+    /// Squelch
+    Squelch = 2,
+    /// VoX
+    Vox = 3,
+    /// CTCSS/CDCSS Compared Result
+    CtcssCdcssResult = 4,
+    /// CTCSS Compared Result
+    CtcssResult = 5,
+    /// CDCSS Compared Result
+    CdcssResult = 6,
+    /// Tail Detected Result
+    TailDetected = 7,
+    /// DTMF/5Tone Symbol Received Flag
+    Dtmf5toneFlag = 8,
+    /// CTCSS/CDCSS Digital Wave
+    CtcssCdcssWave = 9,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg35Gpio2Type {
+    #[fallback]
+    /// High/Low
+    HighLow = 0,
+    /// Interrupt
+    Interrupt = 1,
+    /// Squelch
+    Squelch = 2,
+    /// VoX
+    Vox = 3,
+    /// CTCSS/CDCSS Compared Result
+    CtcssCdcssResult = 4,
+    /// CTCSS Compared Result
+    CtcssResult = 5,
+    /// CDCSS Compared Result
+    CdcssResult = 6,
+    /// Tail Detected Result
+    TailDetected = 7,
+    /// DTMF/5Tone Symbol Received Flag
+    Dtmf5toneFlag = 8,
+    /// CTCSS/CDCSS Digital Wave
+    CtcssCdcssWave = 9,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg35Gpio3Type {
+    #[fallback]
+    /// High/Low
+    HighLow = 0,
+    /// Interrupt
+    Interrupt = 1,
+    /// Squelch
+    Squelch = 2,
+    /// VoX
+    Vox = 3,
+    /// CTCSS/CDCSS Compared Result
+    CtcssCdcssResult = 4,
+    /// CTCSS Compared Result
+    CtcssResult = 5,
+    /// CDCSS Compared Result
+    CdcssResult = 6,
+    /// Tail Detected Result
+    TailDetected = 7,
+    /// DTMF/5Tone Symbol Received Flag
+    Dtmf5toneFlag = 8,
+    /// CTCSS/CDCSS Digital Wave
+    CtcssCdcssWave = 9,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg3CXtalMode {
+    #[fallback]
+    /// ~13MHz
+    Mhz13 = 0,
+    /// ~19.2MHz
+    Mhz192 = 1,
+    /// ~26MHz
+    Mhz26 = 2,
+    /// ~38.4MHz
+    Mhz384 = 3,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum AfOutSel {
+    #[fallback]
+    /// Mute
+    Mute = 0,
+    /// Normal AF out (FM)
+    Normal = 1,
+    /// Tone out for Rx (enable Tone1) (Alarm)
+    ToneRx = 2,
+    /// Beep out for Tx (enable Tone1 and REG_03[9]=1) (Beep)
+    BeepTx = 3,
+    Baseband1 = 4,
+    Baseband2 = 5,
+    /// CTCSS/CDCSS out for Rx test (Ctco)
+    CtcssCdcssRxTest = 6,
+    Am = 7,
+    /// FSK out for Rx test (Fsko)
+    FskOutRx = 8,
+    Unknown3 = 9,
+    Unknown4 = 10,
+    Unknown5 = 11,
+    Unknown6 = 12,
+    Unknown7 = 13,
+    Unknown8 = 14,
+    Unknown9 = 15,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg51CodeHigh {
+    #[fallback]
+    /// Low 12 bits
+    Low = 0,
+    /// High 12 bits
+    High = 1,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg52TailMode {
+    #[fallback]
+    /// 134.4Hz CTCSS tail when CDCSS mode
+    Tail1344 = 0,
+    /// CTCSS 120° phase shift
+    Shift120 = 1,
+    /// CTCSS 180° phase shift
+    Shift180 = 2,
+    /// CTCSS 240° phase shift
+    Shift240 = 3,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg63Glitch {
+    #[fallback]
+    /// Glitch indicator.
+    Glitch = 0,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg70Tone1En {
+    #[fallback]
+    /// Enable TONE1.
+    Tone1En = 0,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg78ThSq1 {
+    #[fallback]
+    /// RSSI threshold for Squelch=1 (0.5dB/step).
+    ThSq1 = 0,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg79VoxInterval {
+    #[fallback]
+    /// VoX Detection Interval Time.
+    VoxInterval = 0,
+}
+
+#[bitenum()]
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Reg7AVox0Delay {
+    #[fallback]
+    /// VOX=0 Detection delay (multiplier *128ms).
+    Vox0Delay = 0,
+}
+
+/*
+
+
+ ------------------------------------------------------------
+
+
+
+*/
+/// REG_00: Control register 0: soft reset.
+#[address(0x00)]
+#[bitfield(u16)]
+pub struct Reg00 {
+    #[bits(15)]
+    pub undocumented: u16,
+    /// Soft Reset. 1=Reset; 0=Normal.
+    #[bits(1)]
+    pub soft_reset: Reg00SoftReset,
+}
+
+/// REG_02: Interrupt/status flags (read-only).
+/// this is documented as read-only but it's written all the time to "clear interrupts", idk...
+#[address(0x02)]
+#[bitfield(u16)]
+pub struct Reg02 {
+    pub undocumented: bool,
+    /// FSK Rx Sync Interrupt.
+    pub fsk_rx_sync: bool,
+    /// Squelch Lost Interrupt.
+    pub squelch_lost: bool,
+    /// Squelch Found Interrupt.
+    pub squelch_found: bool,
+    /// VoX Lost Interrupt.
+    pub vox_lost: bool,
+    /// VoX Found Interrupt.
+    pub vox_found: bool,
+    /// CTCSS Lost Interrupt.
+    pub ctcss_lost: bool,
+    /// CTCSS Found Interrupt.
+    pub ctcss_found: bool,
+    /// CDCSS Lost Interrupt.
+    pub cdcss_lost: bool,
+    /// CDCSS Found Interrupt.
+    pub cdcss_found: bool,
+    /// CTCSS/CDCSS Tail Found Interrupt.
+    pub ctcss_cdcss_tail_found: bool,
+    /// DTMF/5TONE Found Interrupt.
+    pub dtmf_5tone_found: bool,
+    /// FSK FIFO Almost Full Interrupt.
+    pub fsk_fifo_almost_full: bool,
+    /// FSK Rx Finished Interrupt.
+    pub fsk_rx_finished: bool,
+    /// FSK FIFO Almost Empty Interrupt.
+    pub fsk_fifo_almost_empty: bool,
+    /// FSK Tx Finished Interrupt.
+    pub fsk_tx_finished: bool,
+}
+
+/// REG_07: CTCSS/CTC2/CDCSS control word (mode + 13-bit word).
+#[bitfield(u16)]
+pub struct Reg07 {
+    /// Frequency/baud control word.
+    #[bits(13)]
+    pub word: u16,
+    /// Mode select (best-effort, see datasheet).
+    #[bits(3)]
+    pub mode: Reg07Mode,
+}
+
+/// REG_08: CDCSS code high/low 12-bit selector + code.
+#[bitfield(u16)]
+pub struct Reg08 {
+    /// CDCSS high/low 12-bit code.
+    #[bits(12)]
+    pub code: u16,
+    #[bits(3)]
+    pub undocumented: u8,
+    /// 1=CDCSS high 12-bit, 0=CDCSS low 12-bit.
+    #[bits(1)]
+    pub code_high: Reg08CodeHigh,
+}
+
+/// REG_09: DTMF/SelCall Symbol Coefficient for Detection.
+#[address(0x09)]
+#[bitfield(u16)]
+pub struct Reg09 {
+    /// Coefficient.
+    #[bits(8)]
+    pub coefficient: u8,
+    #[bits(4)]
+    pub undocumented: u8,
+    /// Symbol Number.
+    #[bits(4)]
+    pub symbol_number: u8,
+}
+
+/// REG_0A: GPIO input indicator (read-only).
+#[bitfield(u16)]
+pub struct Reg0A {
+    /// GPIOs Input Indicator. 1=High; 0=Low.
+    #[bits(8)]
+    pub gpio_in: u8,
+    #[bits(8)]
+    pub undocumented: u8,
+}
+
+/// REG_0B: DTMF/5Tone received + FSK sync/CRC indicators (read-only).
+#[bitfield(u16)]
+pub struct Reg0B {
+    #[bits(4)]
+    pub undocumented_0: u8,
+    /// FSK Rx CRC Indicator. 1=Pass; 0=Fail.
+    #[bits(1)]
+    pub fsk_crc_pass: Reg0BFskCrcPass,
+    #[bits(1)]
+    pub undocumented_1: bool,
+    /// FSK Rx Sync Positive has been found.
+    pub fsk_sync_pos: bool,
+    /// FSK Rx Sync Negative has been found.
+    pub fsk_sync_neg: bool,
+    /// DTMF/5Tone Code Received.
+    #[bits(4)]
+    pub dtmf_5tone_code: u8,
+    #[bits(4)]
+    pub undocumented_2: u8,
+}
+
+/// REG_0C: CTCSS/CDCSS/VoX/Squelch/IRQ indicators (read-only).
+#[address(0x0C)]
+#[bitfield(u16)]
+pub struct Reg0C {
+    /// Interrupt Indicator. 1=IRQ request.
+    pub irq: bool,
+    /// Squelch result output. 1=Link; 0=Loss.
+    pub squelch: bool,
+    /// VoX Indicator.
+    pub vox: bool,
+    #[bits(7)]
+    pub undocumented: u8,
+    /// CTC1 received.
+    pub ctc1_received: bool,
+    /// CTC2 (55 Hz) received.
+    pub ctc2_received: bool,
+    /// CTCSS Phase Shift Received.
+    #[bits(2)]
+    pub ctcss_phase_shift: Reg0CCtcssPhaseShift,
+    /// CDCSS positive code received.
+    pub cdcss_pos: bool,
+    /// CDCSS negative code received.
+    pub cdcss_neg: bool,
+}
+
+/// REG_0D: Frequency scan indicator + high bits (read-only).
+#[bitfield(u16)]
+pub struct Reg0D {
+    /// Frequency Scan High bits (see datasheet).
+    #[bits(11)]
+    pub scan_hi: u16,
+    #[bits(4)]
+    pub undocumented: u8,
+    /// Frequency Scan Indicator. 1=Busy; 0=Finished.
+    pub scan_busy: bool,
+}
+
+/// REG_0E: Frequency scan low 16 bits (read-only).
+#[bitfield(u16)]
+pub struct Reg0E {
+    /// Frequency Scan Low 16 bits.
+    #[bits(16)]
+    pub scan_lo: u16,
+}
+
+/// REG_10: Rx AGC Gain Table[0] entry.
+#[address(0x10)]
+#[bitfield(u16)]
+pub struct Reg10 {
+    /// PGA Gain.
+    #[bits(3)]
+    pub pga_gain: Reg10PgaGain,
+    /// MIXER Gain.
+    #[bits(2)]
+    pub mixer_gain: Reg10MixerGain,
+    /// LNA Gain.
+    #[bits(3)]
+    pub lna_gain: Reg10LnaGain,
+    /// LNA Gain Short.
+    #[bits(2)]
+    pub lna_gain_short: Reg10LnaGainShort,
+    #[bits(6)]
+    pub undocumented: u8,
+}
+
+/// REG_11: Rx AGC Gain Table[1] entry.
+#[address(0x11)]
+#[bitfield(u16)]
+pub struct Reg11 {
+    /// PGA Gain.
+    #[bits(3)]
+    pub pga_gain: Reg10PgaGain,
+    /// MIXER Gain.
+    #[bits(2)]
+    pub mixer_gain: Reg10MixerGain,
+    /// LNA Gain.
+    #[bits(3)]
+    pub lna_gain: Reg10LnaGain,
+    /// LNA Gain Short.
+    #[bits(2)]
+    pub lna_gain_short: Reg10LnaGainShort,
+    #[bits(6)]
+    pub undocumented: u8,
+}
+
+/// REG_12: Rx AGC Gain Table[2] entry.
+#[address(0x12)]
+#[bitfield(u16)]
+pub struct Reg12 {
+    /// PGA Gain.
+    #[bits(3)]
+    pub pga_gain: Reg10PgaGain,
+    /// MIXER Gain.
+    #[bits(2)]
+    pub mixer_gain: Reg10MixerGain,
+    /// LNA Gain.
+    #[bits(3)]
+    pub lna_gain: Reg10LnaGain,
+    /// LNA Gain Short.
+    #[bits(2)]
+    pub lna_gain_short: Reg10LnaGainShort,
+    #[bits(6)]
+    pub undocumented: u8,
+}
+
+/// REG_13: Rx AGC Gain Table[3] entry.
+#[address(0x13)]
+#[bitfield(u16)]
+pub struct Reg13 {
+    /// PGA Gain.
+    #[bits(3)]
+    pub pga_gain: Reg10PgaGain,
+    /// MIXER Gain.
+    #[bits(2)]
+    pub mixer_gain: Reg10MixerGain,
+    /// LNA Gain.
+    #[bits(3)]
+    pub lna_gain: Reg10LnaGain,
+    /// LNA Gain Short.
+    #[bits(2)]
+    pub lna_gain_short: Reg10LnaGainShort,
+    #[bits(6)]
+    pub undocumented: u8,
+}
+
+/// REG_14: Rx AGC Gain Table[4] entry.
+#[address(0x14)]
+#[bitfield(u16)]
+pub struct Reg14 {
+    /// PGA Gain.
+    #[bits(3)]
+    pub pga_gain: Reg10PgaGain,
+    /// MIXER Gain.
+    #[bits(2)]
+    pub mixer_gain: Reg10MixerGain,
+    /// LNA Gain.
+    #[bits(3)]
+    pub lna_gain: Reg10LnaGain,
+    /// LNA Gain Short.
+    #[bits(2)]
+    pub lna_gain_short: Reg10LnaGainShort,
+    #[bits(6)]
+    pub undocumented: u8,
+}
+
+/// REG_19: MIC AGC control.
+#[address(0x19)]
+#[bitfield(u16)]
+pub struct Reg19 {
+    #[bits(15)]
+    pub undocumented_1: u16,
+    /// Automatic MIC PGA Gain Controller Disable. 1=Disable; 0=Enable.
+    pub mic_agc_disable: bool,
+}
+
+/// REG_1A: Crystal regulator settings.
+#[bitfield(u16)]
+pub struct Reg1A {
+    #[bits(8)]
+    pub undocumented_0: u8,
+    /// Crystal iBit.
+    #[bits(4)]
+    pub xtal_ibit: u8,
+    /// Crystal vReg Bit.
+    #[bits(4)]
+    pub xtal_vreg_bit: u8,
+}
+
+/// REG_1F: PLL charge pump setting.
+#[address(0x1F)]
+#[bitfield(u16)]
+pub struct Reg1F {
+    /// PLL CP bit.
+    #[bits(4)]
+    pub pll_cp_bit: u8,
+    #[bits(12)]
+    pub undocumented: u16,
+}
+
+/// REG_24: DTMF/SelCall detection control.
+#[bitfield(u16)]
+pub struct Reg24 {
+    /// Max Symbol Number for SelCall Detection.
+    #[bits(4)]
+    pub max_symbol_num: u8,
+    /// 1=DTMF; 0=SelCall.
+    pub dtmf_mode: bool,
+    /// DTMF/SelCall Enable. 1=Enable; 0=Disable.
+    pub dtmf_selcall_en: bool,
+    #[bits(10)]
+    pub undocumented_0: u16,
+}
+
+/// REG_28: AF Rx expander settings.
+#[bitfield(u16)]
+pub struct Reg28 {
+    /// Noise point (dB).
+    #[bits(7)]
+    pub expand_noise_point: u8,
+    /// 0 dB point (dB).
+    #[bits(7)]
+    pub expand_0db_point: u8,
+    /// Expander ratio. 00=Disable; 01=1:2; 10=1:3; 11=1:4
+    #[bits(2)]
+    pub expand_ratio: u8,
+}
+
+/// REG_29: AF Tx compressor settings.
+#[bitfield(u16)]
+pub struct Reg29 {
+    /// Noise point (dB).
+    #[bits(7)]
+    pub compress_noise_point: u8,
+    /// 0 dB point (dB).
+    #[bits(7)]
+    pub compress_0db_point: u8,
+    /// Compressor ratio. 00=Disable; 01=1.333:1; 10=2:1; 11=4:1
+    #[bits(2)]
+    pub compress_ratio: u8,
+}
+
+/// REG_2B: AF Tx/Rx filter enable/disable bits (1=Disable).
+#[bitfield(u16)]
+pub struct Reg2B {
+    /// Disable AF Tx pre-emphasis filter. 0=Enable;1=Disable.
+    pub aftx_preemp_disable: bool,
+    /// Disable AF Tx LPF1 filter. 0=Enable;1=Disable.
+    pub aftx_lpf1_disable: bool,
+    /// Disable AF Tx HPF 300 filter. 0=Enable;1=Disable.
+    pub aftx_hpf300_disable: bool,
+    #[bits(5)]
+    pub undocumented_0: u8,
+    /// Disable AF Rx de-emphasis filter. 0=Enable;1=Disable.
+    pub afrx_deemp_disable: bool,
+    /// Disable AF Rx LPF 3K filter. 0=Enable;1=Disable.
+    pub afrx_lpf3k_disable: bool,
+    /// Disable AF Rx HPF 300 filter. 0=Enable;1=Disable.
+    pub afrx_hpf300_disable: bool,
+    #[bits(5)]
+    pub undocumented_1: u8,
+}
+
+/// REG_2E: CTCSS/CDCSS Tx Gain2 tuning (after Gain1).
+#[bitfield(u16)]
+pub struct Reg2E {
+    #[bits(8)]
+    pub undocumented_0: u8,
+    /// CTCSS/CDCSS Tx Gain2 Tuning. 00=12dB;01=6dB;10=0dB;11=-6dB
+    #[bits(2)]
+    pub ctc_gain2: u8,
+    #[bits(6)]
+    pub undocumented_1: u8,
+}
+
+/// REG_30: Top-level enable bits.
+#[address(0x30)]
+#[bitfield(u16)]
+pub struct Reg30 {
+    /// Rx DSP Enable.
+    pub rx_dsp_en: bool,
+    /// Tx DSP Enable.
+    pub tx_dsp_en: bool,
+    /// MIC ADC Enable.
+    pub mic_adc_en: bool,
+    /// PA Gain Enable.
+    pub pa_gain_en: bool,
+    /// PLL/VCO Enable. 1111=Enable;0000=Disable.
+    #[bits(4)]
+    pub pll_vco_en: u8,
+    /// DISC Mode Disable. 1=Disable;0=Enable.
+    pub disc_mode_disable: bool,
+    /// AF DAC Enable.
+    pub af_dac_en: bool,
+    /// Rx Link Enable (LNA/MIXER/PGA/ADC). 1111=Enable;0000=Disable.
+    #[bits(4)]
+    pub rx_link_en: u8,
+    #[bits(1)]
+    pub undocumented: bool,
+    /// VCO Calibration Enable.
+    pub vco_cal_en: bool,
+}
+
+/// REG_31: Compander / VOX / Scramble enables.
+#[bitfield(u16)]
+pub struct Reg31 {
+    #[bits(1)]
+    pub undocumented_0: bool,
+    /// Enable Scramble Function.
+    pub scramble_en: bool,
+    /// Enable VOX detection.
+    pub vox_en: bool,
+    /// Enable Compander Function.
+    pub compander_en: bool,
+    #[bits(12)]
+    pub undocumented_1: u16,
+}
+
+/// REG_32: Frequency scan control.
+#[bitfield(u16)]
+pub struct Reg32 {
+    /// FrequencyScan Enable.
+    pub scan_en: bool,
+    #[bits(13)]
+    undocumented: u16,
+    /// FrequencyScan Time. 00=0.2s;01=0.4s;10=0.8s;11=1.6s
+    #[bits(2)]
+    pub scan_time: u8,
+}
+
+/// REG_33: GPIO output control.
+#[address(0x33)]
+#[bitfield(u16)]
+pub struct Reg33 {
+    // Note on bit ordering:
+    // The legacy C-port driver (and this codebase historically) uses a reversed mapping where:
+    // - GPIO6 is bit0, GPIO5 is bit1, ..., GPIO0 is bit6 (bit7 appears unused/unknown).
+    // Keeping this layout preserves compatibility with existing behavior.
+    /// GPIO6 output value (bit0).
+    pub gpio6_out: bool,
+    /// GPIO5 output value (bit1).
+    pub gpio5_out: bool,
+    /// GPIO4 output value (bit2).
+    pub gpio4_out: bool,
+    /// GPIO3 output value (bit3).
+    pub gpio3_out: bool,
+    /// GPIO2 output value (bit4).
+    pub gpio2_out: bool,
+    /// GPIO1 output value (bit5).
+    pub gpio1_out: bool,
+    /// GPIO0 output value (bit6).
+    pub gpio0_out: bool,
+    /// GPIO7 output value (bit7, undocumented/unused on UV-K5 boards).
+    pub gpio7_out: bool,
+
+    /// GPIO6 output disable (bit8). 1=Disable;0=Enable.
+    pub gpio6_out_disable: bool,
+    /// GPIO5 output disable (bit9). 1=Disable;0=Enable.
+    pub gpio5_out_disable: bool,
+    /// GPIO4 output disable (bit10). 1=Disable;0=Enable.
+    pub gpio4_out_disable: bool,
+    /// GPIO3 output disable (bit11). 1=Disable;0=Enable.
+    pub gpio3_out_disable: bool,
+    /// GPIO2 output disable (bit12). 1=Disable;0=Enable.
+    pub gpio2_out_disable: bool,
+    /// GPIO1 output disable (bit13). 1=Disable;0=Enable.
+    pub gpio1_out_disable: bool,
+    /// GPIO0 output disable (bit14). 1=Disable;0=Enable.
+    pub gpio0_out_disable: bool,
+    /// GPIO7 output disable (bit15). 1=Disable;0=Enable.
+    pub gpio7_out_disable: bool,
+}
+
+/// REG_34: GPIO4/5/6 output type selection.
+#[bitfield(u16)]
+pub struct Reg34 {
+    /// GPIO6 Output Type Selection.
+    #[bits(4)]
+    pub gpio6_type: Reg34Gpio6Type,
+
+    #[bits(4)]
+    pub undocumented: u8,
+    /// GPIO5 Output Type Selection.
+    #[bits(4)]
+    pub gpio5_type: Reg34Gpio5Type,
+    /// GPIO4 Output Type Selection.
+    #[bits(4)]
+    pub gpio4_type: Reg34Gpio4Type,
+}
+
+/// REG_35: GPIO0/1/2/3 output type selection.
+#[bitfield(u16)]
+pub struct Reg35 {
+    /// GPIO3 Output Type Selection.
+    #[bits(4)]
+    pub gpio3_type: Reg35Gpio3Type,
+    /// GPIO2 Output Type Selection.
+    #[bits(4)]
+    pub gpio2_type: Reg35Gpio2Type,
+    /// GPIO1 Output Type Selection.
+    #[bits(4)]
+    pub gpio1_type: Reg35Gpio1Type,
+    /// GPIO0 Output Type Selection.
+    #[bits(4)]
+    pub gpio0_type: Reg35Gpio0Type,
+}
+
+/// REG_36: PA control: bias output + gains.
+#[address(0x36)]
+#[bitfield(u16)]
+pub struct Reg36 {
+    /// PA Gain2 Tuning. 111(max)->000(min).
+    #[bits(3)]
+    pub pa_gain2: u8,
+    /// PA Gain1 Tuning. 111(max)->000(min).
+    #[bits(3)]
+    pub pa_gain1: u8,
+    #[bits(1)]
+    pub undocumented_0: bool,
+    /// Enable PACTL output; 0=Disable (0V).
+    pub pa_ctl_output: bool,
+    /// PA Bias output 0~3.2V (0x00=0V ... 0xFF=3.2V)
+    #[bits(8)]
+    pub pa_bias: u8,
+}
+
+/// REG_37: Power/LDO control and enables.
+#[address(0x37)]
+#[bitfield(u16)]
+pub struct Reg37 {
+    /// Band-Gap Enable.
+    pub bg_en: bool,
+    /// XTAL Enable.
+    pub xtal_en: bool,
+    /// DSP Enable.
+    pub dsp_en: bool,
+    #[bits(1)]
+    pub undocumented_0: bool,
+    /// PLL LDO Bypass. 1=Bypass,0=Enable
+    pub pll_ldo_byp: bool,
+    /// RF LDO Bypass. 1=Bypass,0=Enable
+    pub rf_ldo_byp: bool,
+    /// VCO LDO Bypass. 1=Bypass,0=Enable
+    pub vco_ldo_byp: bool,
+    /// ANA LDO Bypass. 1=Bypass,0=Enable
+    pub ana_ldo_byp: bool,
+    /// PLL LDO Selection. 1=2.7V,0=2.4V
+    pub pll_ldo_sel: bool,
+    /// RF LDO Selection. 1=2.7V,0=2.4V
+    pub rf_ldo_sel: bool,
+    /// VCO LDO Selection. 1=2.7V,0=2.4V
+    pub vco_ldo_sel: bool,
+    /// ANA LDO Selection. 1=2.7V,0=2.4V
+    pub ana_ldo_sel: bool,
+    /// DSP Voltage Setting.
+    #[bits(3)]
+    pub dsp_volt: u8,
+    #[bits(1)]
+    pub undocumented_1: bool,
+}
+
+/// REG_38: Frequency low 16 bits. Frequency(Hz)=(hi<<16 + lo)*10
+#[address(0x38)]
+#[bitfield(u16)]
+pub struct Reg38 {
+    /// Frequency low 16 bits.
+    #[bits(16)]
+    pub freq_lo: u16,
+}
+
+/// REG_39: Frequency high 16 bits. Frequency(Hz)=(hi<<16 + lo)*10
+#[address(0x39)]
+#[bitfield(u16)]
+pub struct Reg39 {
+    /// Frequency high 16 bits.
+    #[bits(16)]
+    pub freq_hi: u16,
+}
+
+/// REG_3B: Crystal frequency low 16 bits (LSB->5Hz).
+#[bitfield(u16)]
+pub struct Reg3B {
+    /// Crystal Frequency Low 16 bits.
+    #[bits(16)]
+    pub xtal_freq_lo: u16,
+}
+
+/// REG_3C: Crystal frequency high 8 bits + mode selection.
+#[bitfield(u16)]
+pub struct Reg3C {
+    #[bits(6)]
+    undocumented: u8,
+    /// Crystal Frequency Mode Selection.
+    #[bits(2)]
+    pub xtal_mode: Reg3CXtalMode,
+    /// Crystal Frequency High 8 bits.
+    #[bits(8)]
+    pub xtal_freq_hi: u8,
+}
+
+/// REG_3D: IF selection coefficient.
+#[bitfield(u16)]
+pub struct Reg3D {
+    /// IF selection coefficient (see datasheet mapping).
+    #[bits(16)]
+    pub if_coeff: u16,
+}
+
+/// REG_3E: Band Selection Threshold (~= VCO Max Frequency(Hz)/96/640).
+#[address(0x3E)]
+#[bitfield(u16)]
+pub struct Reg3E {
+    /// Band selection threshold.
+    #[bits(16)]
+    pub band_thresh: u16,
+}
+
+/// REG_3F: Interrupt enable bits.
+#[address(0x3F)]
+#[bitfield(u16)]
+pub struct Reg3F {
+    pub undocumented: bool,
+    /// FSK Rx Sync Interrupt Enable.
+    pub fsk_rx_sync_en: bool,
+    /// Squelch Lost Interrupt Enable.
+    pub squelch_lost_en: bool,
+    /// Squelch Found Interrupt Enable.
+    pub squelch_found_en: bool,
+    /// VoX Lost Interrupt Enable.
+    pub vox_lost_en: bool,
+    /// VoX Found Interrupt Enable.
+    pub vox_found_en: bool,
+    /// CTCSS Lost Interrupt Enable.
+    pub ctcss_lost_en: bool,
+    /// CTCSS Found Interrupt Enable.
+    pub ctcss_found_en: bool,
+    /// CDCSS Lost Interrupt Enable.
+    pub cdcss_lost_en: bool,
+    /// CDCSS Found Interrupt Enable.
+    pub cdcss_found_en: bool,
+    /// CTCSS/CDCSS Tail Found Interrupt Enable.
+    pub ctcss_cdcss_tail_found_en: bool,
+    /// DTMF/5TONE Found Interrupt Enable.
+    pub dtmf_5tone_found_en: bool,
+    /// FSK FIFO Almost Full Interrupt Enable.
+    pub fsk_fifo_almost_full_en: bool,
+    /// FSK Rx Finished Interrupt Enable.
+    pub fsk_rx_finished_en: bool,
+    /// FSK FIFO Almost Empty Interrupt Enable.
+    pub fsk_fifo_almost_empty_en: bool,
+    /// FSK Tx Finished Interrupt Enable.
+    pub fsk_tx_finished_en: bool,
+}
+
+/// REG_40: RF Tx deviation control.
+#[bitfield(u16)]
+pub struct Reg40 {
+    /// RF Tx Deviation Tuning (0=min;0xFFF=max).
+    #[bits(12)]
+    pub rf_tx_dev: u16,
+    /// Enable RF Tx Deviation.
+    pub rf_tx_dev_en: bool,
+    #[bits(3)]
+    undocumented: u8,
+}
+
+/// REG_43: RF/AF bandwidth and demod gain settings.
+#[address(0x43)]
+#[bitfield(u16)]
+pub struct Reg43 {
+    #[bits(2)]
+    undocumented_0: u8,
+    /// Gain after FM Demodulation. 1=6dB;0=0dB
+    pub fm_demod_gain: bool,
+    #[bits(1)]
+    pub undocumented_1: u8,
+    /// BW Mode Selection. 00=12.5k;01=6.25k;10=25k/20k
+    #[bits(2)]
+    pub bw_mode: u8,
+    /// AFTx LPF2 bandwidth (Apass=1dB).
+    #[bits(3)]
+    pub aftx_lpf2_bw: u8,
+    /// RF filter bandwidth (Apass=0.1dB) when signal is weak.
+    #[bits(3)]
+    pub rf_bw_weak: u8,
+    /// RF filter bandwidth (Apass=0.1dB) when signal is strong.
+    #[bits(3)]
+    pub rf_bw_strong: u8,
+    #[bits(1)]
+    undocumented_2: u8,
+}
+
+/// REG_44: 300Hz AF response coefficient for Tx (part 1).
+#[bitfield(u16)]
+pub struct Reg44 {
+    /// Coefficient.
+    #[bits(16)]
+    pub coeff: u16,
+}
+
+/// REG_45: 300Hz AF response coefficient for Tx (part 2).
+#[bitfield(u16)]
+pub struct Reg45 {
+    /// Coefficient.
+    #[bits(16)]
+    pub coeff: u16,
+}
+
+/// REG_46: Voice amplitude threshold for VOX=1 detect.
+#[bitfield(u16)]
+pub struct Reg46 {
+    /// Threshold.
+    #[bits(11)]
+    pub vox1_thresh: u16,
+    #[bits(5)]
+    undocumented: u8,
+}
+
+/// REG_47: AF output selection / invert and Tx filter bypass.
+#[address(0x47)]
+#[bitfield(u16)]
+pub struct Reg47 {
+    /// AF Tx Filter Bypass All. 1=Bypass;0=Normal.
+    pub aftx_filter_bypass_all: bool,
+    #[bits(7)]
+    pub undocumented_0: u8,
+    /// AF Output Selection.
+    #[bits(4)]
+    pub af_output_selection: AfOutSel,
+    #[bits(1)]
+    pub undocumented_1: u8,
+    /// AF Output Inverse Mode. 1=Inverse.
+    pub af_out_invert: bool,
+    #[bits(2)]
+    pub undocumented_2: u8,
+}
+
+/// REG_48: AF Rx gain and DAC gain settings.
+#[address(0x48)]
+#[bitfield(u16)]
+pub struct Reg48 {
+    /// AF DAC Gain (after Gain1+Gain2). 1111=max;0000=min
+    #[bits(4)]
+    pub af_dac_gain: u8,
+    /// AF Rx Gain2 (-26dB~5.5dB, 0.5dB/step). 0x00=mute
+    #[bits(6)]
+    pub afrx_gain2: u8,
+    /// AF Rx Gain1. 00=0dB;01=-6dB;10=-12dB;11=-18dB
+    #[bits(2)]
+    pub afrx_gain1: u8,
+    #[bits(4)]
+    pub undocumented: u8,
+}
+
+/// completely undocumented
+#[address(0x49)]
+#[bitfield(u16)]
+pub struct Reg49 {
+    #[bits(16)]
+    pub undocumented: u16,
+}
+
+/// REG_4B: AF level controller (ALC) control.
+#[bitfield(u16)]
+pub struct Reg4B {
+    #[bits(5)]
+    undocumented_0: u8,
+    /// AF Level Controller (ALC) Disable. 1=Disable;0=Enable.
+    pub alc_disable: bool,
+    #[bits(10)]
+    undocumented_1: u16,
+}
+
+/// REG_4D: Glitch threshold for Squelch=0.
+#[bitfield(u16)]
+#[address(0x4D)]
+pub struct Reg4D {
+    /// Glitch threshold for Squelch=0.
+    #[bits(8)]
+    pub glitch_th0: u8,
+    #[bits(8)]
+    pub undocumented: u8,
+}
+
+/// REG_4E: Squelch delay + glitch threshold for Squelch=1.
+#[address(0x4E)]
+#[bitfield(u16)]
+pub struct Reg4E {
+    /// Glitch threshold for Squelch=1.
+    #[bits(8)]
+    pub glitch_th1: u8,
+    /// Squelch=0 Delay Setting.
+    #[bits(3)]
+    pub sq0_delay: u8,
+    /// Squelch=1 Delay Setting.
+    #[bits(3)]
+    pub sq1_delay: u8,
+    #[bits(2)]
+    pub undocumented_1: u8,
+}
+
+/// REG_4F: Ex-noise thresholds for squelch.
+#[bitfield(u16)]
+#[address(0x4F)]
+pub struct Reg4F {
+    /// Ex-noise threshold for Squelch=1.
+    #[bits(6)]
+    pub exnoise_th1: u8,
+    #[bits(2)]
+    undocumented_0: u8,
+    /// Ex-noise threshold for Squelch=0.
+    #[bits(7)]
+    pub exnoise_th0: u8,
+    #[bits(1)]
+    undocumented_1: bool,
+}
+
+/// REG_50: AF Tx mute control.
+#[address(0x50)]
+#[bitfield(u16)]
+pub struct Reg50 {
+    #[bits(15)]
+    pub undocumented: u16,
+    /// Enable AF Tx Mute. 1=Mute;0=Normal.
+    pub aftx_mute: bool,
+}
+
+/// REG_51: CTCSS/CDCSS Tx control.
+#[address(0x51)]
+#[bitfield(u16)]
+pub struct Reg51 {
+    /// CTCSS/CDCSS Tx Gain1 Tuning. 0=min;0x7F=max
+    #[bits(7)]
+    pub tx_gain1: u8,
+    #[bits(1)]
+    undocumented: u8,
+    /// Auto CTCSS BW Mode. 1=Disable;0=Enable
+    pub auto_ctcss_bw_disable: bool,
+    /// Auto CDCSS BW Mode. 1=Disable;0=Enable
+    pub auto_cdcss_bw_disable: bool,
+    /// 1050Hz Detection Mode. 1=1050/4 detect enable
+    pub detect_1050: bool,
+    /// CDCSS 24/23bit selection. 1=24bit;0=23bit
+    pub cdcss_24bit: bool,
+    /// Mode select. 1=CTCSS;0=CDCSS
+    pub mode_ctcss: bool,
+    /// Transmit negative CDCSS code. 1=neg;0=pos
+    pub tx_cdcss_neg: bool,
+    /// GPIO0 Input for CDCSS (BK4819v3). 1=GPIO0 input;0=normal
+    pub gpio0_in_cdcss: bool,
+    /// Enable Tx CTCSS/CDCSS.
+    pub tx_ctc_en: bool,
+}
+
+/// REG_52: CTCSS/CTCSS-tail/CDCSS detection thresholds and phase tail options.
+#[address(0x52)]
+#[bitfield(u16)]
+pub struct Reg52 {
+    /// CTCSS lost detect threshold.
+    #[bits(6)]
+    pub ctcss_lost_th: u8,
+    /// CTCSS found detect threshold.
+    #[bits(6)]
+    pub ctcss_found_th: u8,
+    /// CTCSS Detection Threshold Mode. 1=~0.1%;0=0.1Hz
+    pub detect_thresh_mode: bool,
+    /// CTCSS tail mode selection (valid when TAIL_SHIFT_EN=1).
+    #[bits(2)]
+    pub tail_mode: Reg52TailMode,
+    /// Enable 120/180/240 degree shift CTCSS or 134.4Hz tail when CDCSS mode.
+    pub tail_shift_en: bool,
+}
+
+/// REG_54: 300Hz AF response coefficient for Rx (part 1).
+#[address(0x54)]
+#[bitfield(u16)]
+pub struct Reg54 {
+    /// Coefficient.
+    #[bits(16)]
+    pub coeff: u16,
+}
+
+/// REG_55: 300Hz AF response coefficient for Rx (part 2).
+#[bitfield(u16)]
+pub struct Reg55 {
+    /// Coefficient.
+    #[bits(16)]
+    pub coeff: u16,
+}
+
+/// REG_58: FSK mode and enable.
+#[bitfield(u16)]
+pub struct Reg58 {
+    /// FSK Enable.
+    pub fsk_en: bool,
+    /// FSK Rx Bandwidth Setting.
+    #[bits(3)]
+    pub fsk_rx_bw: u8,
+    /// FSK Preamble Type Selection.
+    #[bits(2)]
+    pub preamble_type: u8,
+    #[bits(2)]
+    undocumented: u8,
+    /// FSK Rx Gain.
+    #[bits(2)]
+    pub fsk_rx_gain: u8,
+    /// FSK Rx Mode Selection.
+    #[bits(3)]
+    pub fsk_rx_mode: u8,
+    /// FSK Tx Mode Selection.
+    #[bits(3)]
+    pub fsk_tx_mode: u8,
+}
+
+/// REG_59: FSK FIFO control and options.
+#[bitfield(u16)]
+pub struct Reg59 {
+    #[bits(3)]
+    undocumented_0: u8,
+    /// FSK Sync Length Selection. 1=4 bytes;0=2 bytes.
+    pub sync_len: bool,
+    /// FSK Preamble Length Selection (0=1 byte ... 15=16 bytes).
+    #[bits(4)]
+    pub preamble_len: u8,
+    #[bits(1)]
+    undocumented_1: u8,
+    /// Invert FSK data when TX.
+    pub inv_data_tx: bool,
+    /// Invert FSK data when RX.
+    pub inv_data_rx: bool,
+    /// Enable FSK TX.
+    pub fsk_tx_en: bool,
+    /// Enable FSK RX.
+    pub fsk_rx_en: bool,
+    /// Enable FSK Scramble.
+    pub scramble_en: bool,
+    /// Clear RX FIFO, 1=clear.
+    pub clr_rx_fifo: bool,
+    /// Clear TX FIFO, 1=clear.
+    pub clr_tx_fifo: bool,
+}
+
+/// REG_5A: FSK sync bytes 0 and 1.
+#[bitfield(u16)]
+pub struct Reg5A {
+    /// FSK Sync Byte 1.
+    #[bits(8)]
+    pub sync1: u8,
+    /// FSK Sync Byte 0.
+    #[bits(8)]
+    pub sync0: u8,
+}
+
+/// REG_5B: FSK sync bytes 2 and 3.
+#[bitfield(u16)]
+pub struct Reg5B {
+    /// FSK Sync Byte 3.
+    #[bits(8)]
+    pub sync3: u8,
+    /// FSK Sync Byte 2.
+    #[bits(8)]
+    pub sync2: u8,
+}
+
+/// REG_5C: FSK CRC option.
+#[bitfield(u16)]
+pub struct Reg5C {
+    #[bits(6)]
+    undocumented_0: u8,
+    /// CRC Option Enable. 1=Enable;0=Disable.
+    pub crc_en: bool,
+    #[bits(9)]
+    undocumented_1: u16,
+}
+
+/// REG_5D: FSK data length (11 bits total for BK4819v3).
+#[bitfield(u16)]
+pub struct Reg5D {
+    #[bits(5)]
+    undocumented: u8,
+    /// FSK Data Length high 3 bits.
+    #[bits(3)]
+    pub len_hi: u8,
+    /// FSK Data Length low 8 bits (example: 0x0F means 16 bytes).
+    #[bits(8)]
+    pub len_lo: u8,
+}
+
+/// REG_5E: FSK FIFO thresholds.
+#[bitfield(u16)]
+pub struct Reg5E {
+    /// FSK Rx FIFO Almost Full Threshold (0..7 words).
+    #[bits(3)]
+    pub rx_af_th: u8,
+    /// FSK Tx FIFO Almost Empty Threshold (0..127 words).
+    #[bits(7)]
+    pub tx_ae_th: u8,
+    #[bits(6)]
+    undocumented: u8,
+}
+
+/// REG_5F: FSK word input/output.
+#[bitfield(u16)]
+pub struct Reg5F {
+    /// FSK Word Input/Output.
+    #[bits(16)]
+    pub word: u16,
+}
+
+/// REG_63: Glitch indicator (read-only).
+#[address(0x63)]
+#[bitfield(u16)]
+pub struct Reg63 {
+    /// Glitch indicator.
+    #[bits(8)]
+    pub glitch: u8,
+    #[bits(8)]
+    undocumented: u8,
+}
+
+/// REG_64: Voice amplitude out (read-only).
+#[address(0x64)]
+#[bitfield(u16)]
+pub struct Reg64 {
+    /// Voice amplitude output.
+    #[bits(16)]
+    pub voice_amp: u16,
+}
+
+/// REG_65: Ex-noise indicator (read-only).
+#[address(0x65)]
+#[bitfield(u16)]
+pub struct Reg65 {
+    /// Ex-noise indicator (dB/step).
+    #[bits(7)]
+    pub exnoise: u8,
+    #[bits(9)]
+    undocumented: u16,
+}
+
+/// REG_67: RSSI (read-only). dBm ~= REG/2 - 160.
+#[address(0x67)]
+#[bitfield(u16)]
+pub struct Reg67 {
+    /// RSSI value (0.5 dB/step).
+    #[bits(9)]
+    pub rssi: u16,
+    #[bits(7)]
+    undocumented: u8,
+}
+
+/// REG_68: CTCSS scan indicator+frequency (read-only).
+#[address(0x68)]
+#[bitfield(u16)]
+pub struct Reg68 {
+    /// CTCSS Frequency word.
+    #[bits(13)]
+    pub freq_word: u16,
+    #[bits(2)]
+    undocumented: u8,
+    /// CTCSS Scan Indicator. 1=Busy;0=Found.
+    pub busy: bool,
+}
+
+/// REG_69: CDCSS scan indicator (read-only).
+#[address(0x69)]
+#[bitfield(u16)]
+pub struct Reg69 {
+    /// CDCSS high 12 bits.
+    #[bits(12)]
+    pub code_hi: u16,
+    #[bits(2)]
+    undocumented: u8,
+    /// 23/24-bit indicator (BK4819v3). 1=24bit;0=23bit.
+    pub is_24bit: bool,
+    /// CDCSS Scan Indicator. 1=Busy;0=Found.
+    pub busy: bool,
+}
+
+/// REG_6A: CDCSS low 12 bits (read-only).
+#[address(0x6A)]
+#[bitfield(u16)]
+pub struct Reg6A {
+    /// CDCSS low 12 bits.
+    #[bits(12)]
+    pub code_lo: u16,
+    #[bits(4)]
+    undocumented: u8,
+}
+
+/// REG_6F: AF Tx/Rx input amplitude (read-only).
+#[address(0x6F)]
+#[bitfield(u16)]
+pub struct Reg6F {
+    /// AF Tx/Rx Input Amplitude (dB).
+    #[bits(7)]
+    pub af_amp_db: u8,
+    #[bits(9)]
+    undocumented: u16,
+}
+
+/// REG_70: Tone enable and gain.
+#[address(0x70)]
+#[bitfield(u16)]
+pub struct Reg70 {
+    /// TONE2/FSK tuning gain.
+    #[bits(7)]
+    pub tone2_gain: u8,
+    /// Enable TONE2.
+    pub tone2_en: bool,
+    /// TONE1 tuning gain.
+    #[bits(7)]
+    pub tone1_gain: u8,
+    /// Enable TONE1.
+    pub tone1_en: bool,
+}
+
+/// REG_71: TONE1/Scramble frequency control word.
+#[address(0x71)]
+#[bitfield(u16)]
+pub struct Reg71 {
+    /// Frequency control word.
+    #[bits(16)]
+    pub word: u16,
+}
+
+/// REG_72: TONE2/FSK frequency control word.
+#[bitfield(u16)]
+pub struct Reg72 {
+    /// Frequency control word.
+    #[bits(16)]
+    pub word: u16,
+}
+
+/// REG_73: Automatic Frequency Correction (AFC) settings.
+#[bitfield(u16)]
+pub struct Reg73 {
+    #[bits(4)]
+    undocumented_0: u8,
+    /// Automatic Frequency Correction Disable. 1=Disable;0=Enable.
+    pub afc_disable: bool,
+    #[bits(6)]
+    undocumented_1: u8,
+    /// AFC Range Selection. 000=max;111=min
+    #[bits(3)]
+    pub afc_range: u8,
+    #[bits(2)]
+    undocumented_2: u8,
+}
+
+/// REG_74: 3000Hz AF response coefficient for Tx.
+#[bitfield(u16)]
+pub struct Reg74 {
+    /// Coefficient.
+    #[bits(16)]
+    pub coeff: u16,
+}
+
+/// REG_75: 3000Hz AF response coefficient for Rx.
+#[bitfield(u16)]
+pub struct Reg75 {
+    /// Coefficient.
+    #[bits(16)]
+    pub coeff: u16,
+}
+
+/// REG_78: RSSI thresholds for squelch.
+#[address(0x78)]
+#[bitfield(u16)]
+pub struct Reg78 {
+    /// RSSI threshold for Squelch=0 (0.5dB/step).
+    #[bits(8)]
+    pub th_sq0: u8,
+    /// RSSI threshold for Squelch=1 (0.5dB/step).
+    #[bits(8)]
+    pub th_sq1: u8,
+}
+
+/// REG_79: VOX detection interval and VOX=0 threshold.
+#[bitfield(u16)]
+pub struct Reg79 {
+    /// Voice Amplitude Threshold for VOX=0 detect.
+    #[bits(11)]
+    pub vox0_thresh: u16,
+    /// VoX Detection Interval Time.
+    #[bits(5)]
+    pub vox_interval: u8,
+}
+
+/// REG_7A: VOX=0 detection delay (*128ms).
+#[bitfield(u16)]
+pub struct Reg7A {
+    #[bits(12)]
+    undocumented: u16,
+    /// VOX=0 Detection delay (multiplier *128ms).
+    #[bits(4)]
+    pub vox0_delay: u8,
+}
+
+/// completely undocumented
+#[address(0x7B)]
+#[bitfield(u16)]
+pub struct Reg7B {
+    #[bits(16)]
+    pub undocumented: u16,
+}
+
+/// REG_7D: MIC sensitivity tuning.
+#[address(0x7D)]
+#[bitfield(u16)]
+pub struct Reg7D {
+    /// MIC Sensitivity Tuning. 0=min;0x1F=max;0.5dB/step.
+    #[bits(5)]
+    pub mic_sens: u8,
+    #[bits(11)]
+    pub undocumented: u16,
+}
+
+/// REG_7E: AGC and DC filter bandwidth settings.
+#[address(0x7E)]
+#[bitfield(u16)]
+pub struct Reg7E {
+    /// DC Filter Bandwidth for Rx (IF in). 000=Bypass.
+    #[bits(3)]
+    pub dcf_bw_rx: u8,
+    /// DC Filter Bandwidth for Tx (MIC in). 000=Bypass.
+    #[bits(3)]
+    pub dcf_bw_tx: u8,
+    #[bits(6)]
+    undocumented: u8,
+    /// AGC Fix Index. 011=max ... 100=min.
+    #[bits(3)]
+    pub agc_fix_index: u8,
+    /// AGC Fix Mode. 1=Fix;0=Auto.
+    pub agc_fix_mode: bool,
+}
+
+/// Compatibility alias for the initial WIP code in this file.
+pub type Mode = Reg07Mode;

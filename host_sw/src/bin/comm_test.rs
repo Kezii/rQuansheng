@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::Write;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -19,7 +19,7 @@ fn main() {
 
     let (tx, rx) = mpsc::channel();
 
-    let handle = thread::spawn(move || {
+    let _ = thread::spawn(move || {
         loop {
             let line = read_line_from_port(&mut port, 256).unwrap();
             let reply = decode_line::<HostBound>(&line).unwrap();
@@ -34,7 +34,7 @@ fn main() {
         let ping_encoded = encode_line(&ping).unwrap();
         port_clone.write_all(&ping_encoded).unwrap();
 
-        let reply = rx.recv().unwrap();
+        let _ = rx.recv().unwrap();
         let _ = rx.try_recv();
 
         let elapsed = now.elapsed();
