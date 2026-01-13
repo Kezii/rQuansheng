@@ -753,6 +753,14 @@ where
         self.bitbang.write_reg::<Reg3F>(Reg3F::from(0))
     }
 
+    pub fn enable_squelch_interrupts(&mut self) -> Result<(), BUS::Error> {
+        self.bitbang.write_reg(
+            Reg3F::new()
+                .with_squelch_found_en(true)
+                .with_squelch_lost_en(true),
+        )
+    }
+
     pub fn set_gains(&mut self, volume_gain: u8, dac_gain: u8) -> Result<(), BUS::Error> {
         self.bitbang.write_reg(
             Reg48::new()

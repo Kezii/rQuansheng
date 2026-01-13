@@ -3,6 +3,8 @@
 //! This is still a bit shit and needs a rewrite
 
 pub mod driver;
-pub mod regs;
+mod regs;
 
 pub use driver::{Bk4819Driver, CompanderMode, CssScanResult, FilterBandwidth, GpioPin, RogerMode};
+
+pub use regs::*;

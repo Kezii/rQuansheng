@@ -19,7 +19,7 @@ use embedded_hal::digital::{InputPin, OutputPin};
 
 use dp30g030_hal::gpio::{is_valid_pin, FlexPin, Port};
 
-use crate::bk4819::regs::Bk4819Register;
+use crate::DeviceRegister;
 
 /// A bidirectional GPIO line (used for BK4819 SDA/SDIO).
 ///
@@ -41,8 +41,8 @@ pub trait Bk4819Bus {
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error>;
     fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error>;
 
-    fn write_reg<R: Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error>;
-    fn read_reg<R: Bk4819Register>(&mut self) -> Result<R, Self::Error>;
+    fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), Self::Error>;
+    fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error>;
 }
 
 /// Bit-banged BK4819 bus implementation.
@@ -217,13 +217,13 @@ where
         let _ = self.sda.set_high();
     }
 
-    pub fn write_reg_n<R: Bk4819Register>(&mut self, reg: R) {
+    pub fn write_reg_n<R: DeviceRegister>(&mut self, reg: R) {
         self.write_reg_raw(R::ADDRESS, reg.serialize());
     }
 
-    pub fn read_reg_n<R: Bk4819Register>(&mut self) -> R {
+    pub fn read_reg_n<R: DeviceRegister>(&mut self) -> R {
         let value = self.read_reg_raw(R::ADDRESS);
-        <R as Bk4819Register>::deserialize(value)
+        <R as DeviceRegister>::deserialize(value)
     }
 }
 
@@ -249,13 +249,13 @@ where
     }
 
     #[inline]
-    fn write_reg<R: Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error> {
+    fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), Self::Error> {
         Bk4819BitBang::write_reg_n(self, reg);
         Ok(())
     }
 
     #[inline]
-    fn read_reg<R: Bk4819Register>(&mut self) -> Result<R, Self::Error> {
+    fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error> {
         let value = Bk4819BitBang::read_reg_n::<R>(self);
         Ok(value)
     }
@@ -293,12 +293,12 @@ where
     }
 
     #[inline]
-    pub fn write_reg<R: Bk4819Register>(&mut self, reg: R) -> Result<(), BUS::Error> {
+    pub fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), BUS::Error> {
         self.bus.write_reg(reg)
     }
 
     #[inline]
-    pub fn read_reg<R: Bk4819Register>(&mut self) -> Result<R, BUS::Error> {
+    pub fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, BUS::Error> {
         self.bus.read_reg::<R>()
     }
 }

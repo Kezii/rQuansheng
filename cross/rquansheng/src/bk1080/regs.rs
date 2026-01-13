@@ -9,9 +9,6 @@
 use bitfield_struct::{bitenum, bitfield};
 use bk4819_reg_macros::address;
 
-// Reuse the same address trait as BK4819: `#[address(..)]` implements this.
-pub use crate::bk4819::regs::RegisterAddress;
-
 /// BK1080 FM band selection (REG_05[7:6]).
 ///
 /// Derived from the reference firmware behavior:
@@ -58,26 +55,6 @@ impl FmBand {
             Self::Low640To760 => 760,
         }
     }
-}
-
-/// Marker trait for BK1080 register value types.
-pub trait Bk1080Register:
-    RegisterAddress + Copy + From<u16> + Into<u16> + core::fmt::Debug + Default
-{
-    #[inline]
-    fn serialize(self) -> u16 {
-        self.into()
-    }
-
-    #[inline]
-    fn deserialize(data: u16) -> Self {
-        Self::from(data)
-    }
-}
-
-impl<T> Bk1080Register for T where
-    T: RegisterAddress + Copy + From<u16> + Into<u16> + core::fmt::Debug + Default
-{
 }
 
 // --- Typed register bitfields (only for fields used by the firmware) --------

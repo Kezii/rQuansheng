@@ -10,8 +10,7 @@ use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
 use crate::bk1080::{Bk1080, Bk1080Bus};
-use crate::bk4819::regs::{AfOutSel, Reg3F};
-use crate::bk4819::{Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
+use crate::bk4819::{AfOutSel, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk4819_bitbang::Bk4819Bus;
 use crate::dialer::Dialer;
 use crate::display::RenderingMgr;
@@ -282,11 +281,7 @@ where
 
         self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, true)?;
 
-        self.bk.bk_mut().write_reg(
-            Reg3F::new()
-                .with_squelch_found_en(true)
-                .with_squelch_lost_en(true),
-        )?;
+        self.bk.enable_squelch_interrupts()?;
 
         self.bk
             .init_agc(self.channel_cfg.modulation == Modulation::AM)?;

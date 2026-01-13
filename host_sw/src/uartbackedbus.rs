@@ -5,11 +5,11 @@ use std::{
 
 use log::{error, info};
 use rquansheng::{
-    bk4819::regs::Bk4819Register,
     bk4819_bitbang::Bk4819Bus,
     messages::{HostBound, RadioBound, decode_line, encode_line},
 };
 use serialport::SerialPort;
+use rquansheng::DeviceRegister;
 
 pub struct SerialProtocolRadioBus {
     port: Box<dyn SerialPort>,
@@ -103,11 +103,11 @@ impl Bk4819Bus for SerialProtocolRadioBus {
         ))
     }
 
-    fn write_reg<R: Bk4819Register>(&mut self, reg: R) -> Result<(), Self::Error> {
+    fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), Self::Error> {
         self.write_reg_raw(R::ADDRESS, reg.serialize())
     }
 
-    fn read_reg<R: Bk4819Register>(&mut self) -> Result<R, Self::Error> {
+    fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error> {
         let v = self.read_reg_raw(R::ADDRESS)?;
         Ok(R::deserialize(v))
     }

@@ -7,4 +7,3 @@ pub mod driver;
 pub mod regs;
 
 pub use driver::*;
-pub use regs::*;

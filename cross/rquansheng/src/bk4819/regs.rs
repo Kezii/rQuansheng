@@ -8,43 +8,6 @@ use bk4819_reg_macros::address;
 // WARNING: EVEN IF CORRECT, SOME FIELDS ARE UNDOCUMENTED IN THE DOCUMENTATION
 //          BUT THEY ARE USED IN THE ORIGINAL FIRMWARE
 
-/// Implemented by each BK4819 register struct to provide the register address.
-///
-/// `#[address(0x..)]` auto-implements this for the annotated struct.
-pub trait RegisterAddress {
-    const ADDRESS: u8;
-
-    #[inline]
-    fn get_address() -> u8
-    where
-        Self: Sized,
-    {
-        Self::ADDRESS
-    }
-}
-
-/// Marker trait for BK4819 register value types.
-///
-/// For bitfield structs this is usually satisfied by the auto-generated `From<u16>` / `Into<u16>`.
-pub trait Bk4819Register:
-    RegisterAddress + Copy + From<u16> + Into<u16> + core::fmt::Debug + Default
-{
-    #[inline]
-    fn serialize(self) -> u16 {
-        self.into()
-    }
-
-    #[inline]
-    fn deserialize(data: u16) -> Self {
-        Self::from(data)
-    }
-}
-
-impl<T> Bk4819Register for T where
-    T: RegisterAddress + Copy + From<u16> + Into<u16> + core::fmt::Debug + Default
-{
-}
-
 /// Auto-generated register bitfields/enums from `BK4819V3.svd`.
 ///
 /// Note: This is a best-effort mapping; verify against the datasheet for tricky fields.

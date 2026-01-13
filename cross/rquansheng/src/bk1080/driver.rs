@@ -8,6 +8,7 @@ use embedded_hal::delay::DelayNs;
 
 use crate::bk1080::regs;
 use crate::i2c_bitbang::{BitBangI2c, Error as I2cError};
+use crate::DeviceRegister;
 
 /// First command/address byte used by the BK1080 protocol on UV-K5.
 ///
@@ -55,12 +56,12 @@ pub trait Bk1080Bus {
     fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error>;
 
     #[inline]
-    fn write_reg<R: regs::Bk1080Register>(&mut self, value: R) -> Result<(), Self::Error> {
+    fn write_reg<R: DeviceRegister>(&mut self, value: R) -> Result<(), Self::Error> {
         self.write_reg_raw(R::ADDRESS, value.serialize())
     }
 
     #[inline]
-    fn read_reg<R: regs::Bk1080Register>(&mut self) -> Result<R, Self::Error> {
+    fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error> {
         let v = self.read_reg_raw(R::ADDRESS)?;
         Ok(R::deserialize(v))
     }
