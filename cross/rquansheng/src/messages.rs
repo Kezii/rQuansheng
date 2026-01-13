@@ -1,3 +1,4 @@
+use embedded_io_async::Write;
 use heapless::vec;
 use serde::{Deserialize, Serialize};
 
@@ -68,4 +69,12 @@ pub enum HostBound {
     WriteAck(u8, u16),
     EepromByte { address: u16, value: u8 },
     Ready,
+}
+
+impl HostBound {
+    pub async fn write<W: Write>(self, tx: &mut W) -> Result<(), W::Error> {
+        let encoded = encode_line(&self).unwrap();
+        tx.write_all(&encoded).await?;
+        Ok(())
+    }
 }

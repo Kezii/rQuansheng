@@ -49,7 +49,7 @@ mod app {
     use dp30g030_hal::adc;
     use dp30g030_hal::gpio::{Input, Output, Pin, Port};
     use embedded_hal::digital::{InputPin, OutputPin};
-    use embedded_io_async::{Read as AsyncRead, Write as AsyncWrite};
+    use embedded_io_async::Read as AsyncRead;
     use heapless::Vec;
     use rquansheng::bk1080::{Bk1080, Bk1080BitBangBus};
     use rquansheng::bk4819::Bk4819Driver;
@@ -58,7 +58,7 @@ mod app {
     use rquansheng::delay::CycleDelay;
     use rquansheng::display::DisplayMgr;
     use rquansheng::keyboard::KeyboardState;
-    use rquansheng::messages::{decode_line, encode_line, HostBound, RadioBound};
+    use rquansheng::messages::{decode_line, HostBound, RadioBound};
     use rquansheng::radio::RadioController;
     use rquansheng::radio_platform::UVK5RadioPlatform;
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
@@ -245,18 +245,17 @@ mod app {
             if let Ok(message) = message {
                 match message {
                     RadioBound::Ping => {
-                        let reply = HostBound::Pong;
-                        let reply_encoded = encode_line(&reply).unwrap();
-                        tx.write_all(&reply_encoded).await.unwrap();
+                        HostBound::Pong.write(&mut tx).await.unwrap();
                     }
 
                     RadioBound::WriteBk4819Register(reg, value) => {
                         cx.shared
                             .radio
                             .lock(|r| r.bk.__internal_write_register_raw(reg, value));
-                        let reply = HostBound::WriteAck(reg, value);
-                        let reply_encoded = encode_line(&reply).unwrap();
-                        tx.write_all(&reply_encoded).await.unwrap();
+                        HostBound::WriteAck(reg, value)
+                            .write(&mut tx)
+                            .await
+                            .unwrap();
                     }
 
                     RadioBound::ReadBk4819Register(reg) => {
@@ -264,9 +263,10 @@ mod app {
                             .shared
                             .radio
                             .lock(|r| r.bk.__internal_read_register_raw(reg));
-                        let reply = HostBound::Register(reg, value.unwrap_or(0));
-                        let reply_encoded = encode_line(&reply).unwrap();
-                        tx.write_all(&reply_encoded).await.unwrap();
+                        HostBound::Register(reg, value.unwrap_or(0))
+                            .write(&mut tx)
+                            .await
+                            .unwrap();
                     }
 
                     RadioBound::ReadEepromByte { address } => {
@@ -282,9 +282,10 @@ mod app {
                             }
                         });
 
-                        let reply = HostBound::EepromByte { address, value };
-                        let reply_encoded = encode_line(&reply).unwrap();
-                        tx.write_all(&reply_encoded).await.unwrap();
+                        HostBound::EepromByte { address, value }
+                            .write(&mut tx)
+                            .await
+                            .unwrap();
                     }
 
                     RadioBound::WriteBk1080Register(reg, value) => {
@@ -292,9 +293,10 @@ mod app {
                             .shared
                             .radio
                             .lock(|r| r.bk1080.__internal_write_register_raw(reg, value));
-                        let reply = HostBound::WriteAck(reg, value);
-                        let reply_encoded = encode_line(&reply).unwrap();
-                        tx.write_all(&reply_encoded).await.unwrap();
+                        HostBound::WriteAck(reg, value)
+                            .write(&mut tx)
+                            .await
+                            .unwrap();
                     }
 
                     RadioBound::ReadBk1080Register(reg) => {
@@ -302,9 +304,10 @@ mod app {
                             .shared
                             .radio
                             .lock(|r| r.bk1080.__internal_read_register_raw(reg));
-                        let reply = HostBound::Register(reg, value.unwrap_or(0));
-                        let reply_encoded = encode_line(&reply).unwrap();
-                        tx.write_all(&reply_encoded).await.unwrap();
+                        HostBound::Register(reg, value.unwrap_or(0))
+                            .write(&mut tx)
+                            .await
+                            .unwrap();
                     }
 
                     RadioBound::SetAudioPath(on) => {
