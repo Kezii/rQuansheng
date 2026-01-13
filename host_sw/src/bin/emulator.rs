@@ -12,7 +12,6 @@ use embedded_graphics_simulator::{
 use rquansheng::{
     bk1080::Bk1080,
     bk4819::Bk4819Driver,
-    bk4819_bitbang::Bk4819,
     keyboard::{KeyEvent, QuanshengKey},
     radio::RadioController,
 };
@@ -41,11 +40,7 @@ fn main() -> Result<(), core::convert::Infallible> {
     let bus_1080 = DummyRadioBus1080;
     let bk1080 = Bk1080::new(bus_1080);
 
-    let mut radio = RadioController::new(
-        Bk4819Driver::new(Bk4819::new(radio_bus)),
-        bk1080,
-        dummy_platform,
-    );
+    let mut radio = RadioController::new(Bk4819Driver::new(radio_bus), bk1080, dummy_platform);
     window.update(&display);
 
     'main: loop {

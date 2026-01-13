@@ -1,10 +1,6 @@
 use embedded_hal::delay::DelayNs;
 
-use crate::{
-    bk4819::regs::*,
-    bk4819_bitbang::{Bk4819, Bk4819Bus},
-    radio::SquelchThresholds,
-};
+use crate::{bk4819::regs::*, bk_common::BkCommonBus, radio::SquelchThresholds};
 
 /// RX/TX bandwidth preset (C enum `BK4819_FilterBandwidth_t`).
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -53,7 +49,7 @@ pub enum RogerMode {
 /// High-level driver, owning a `Bk4819` instance plus a small amount of state
 /// that was global in the C implementation (GPIO out shadow + rx idle flag).
 pub struct Bk4819Driver<BUS> {
-    bitbang: Bk4819<BUS>,
+    bitbang: BUS,
     gpio_out_state: Reg33,
     /// If true, radio is considered asleep/not listening (C global `gRxIdleMode`).
     pub rx_idle_mode: bool,
@@ -61,14 +57,14 @@ pub struct Bk4819Driver<BUS> {
 
 impl<BUS> Bk4819Driver<BUS>
 where
-    BUS: Bk4819Bus,
+    BUS: BkCommonBus,
 {
     /// Default microphone gain (0.5 dB/step, 0..=31).
     ///
     /// Reference firmware uses 5 presets: {3, 8, 16, 24, 31}. We choose the mid preset (16).
     pub const DEFAULT_MIC_GAIN: u8 = 16;
 
-    pub const fn new(bk: Bk4819<BUS>) -> Self {
+    pub const fn new(bk: BUS) -> Self {
         Self {
             bitbang: bk,
             gpio_out_state: Reg33::new(),
@@ -77,12 +73,7 @@ where
     }
 
     #[inline]
-    pub fn free(self) -> Bk4819<BUS> {
-        self.bitbang
-    }
-
-    #[inline]
-    pub fn bk_mut(&mut self) -> &mut Bk4819<BUS> {
+    pub fn bk_mut(&mut self) -> &mut BUS {
         &mut self.bitbang
     }
 

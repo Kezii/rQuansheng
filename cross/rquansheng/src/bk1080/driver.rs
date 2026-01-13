@@ -7,8 +7,8 @@ use dp32g030 as pac;
 use embedded_hal::delay::DelayNs;
 
 use crate::bk1080::regs;
+use crate::bk_common::BkCommonBus;
 use crate::i2c_bitbang::{BitBangI2c, Error as I2cError};
-use crate::DeviceRegister;
 
 /// First command/address byte used by the BK1080 protocol on UV-K5.
 ///
@@ -48,25 +48,6 @@ impl From<I2cError> for Error {
     }
 }
 
-/// Low-level BK1080 bus access trait.
-pub trait Bk1080Bus {
-    type Error;
-
-    fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error>;
-    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error>;
-
-    #[inline]
-    fn write_reg<R: DeviceRegister>(&mut self, value: R) -> Result<(), Self::Error> {
-        self.write_reg_raw(R::ADDRESS, value.serialize())
-    }
-
-    #[inline]
-    fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error> {
-        let v = self.read_reg_raw(R::ADDRESS)?;
-        Ok(R::deserialize(v))
-    }
-}
-
 /// Bit-banged BK1080 bus implementation (UV-K5 shared PA10/PA11 pins).
 pub struct Bk1080BitBangBus<D: DelayNs> {
     i2c: BitBangI2c,
@@ -92,7 +73,7 @@ impl<D: DelayNs> Bk1080BitBangBus<D> {
     }
 }
 
-impl<D: DelayNs> Bk1080Bus for Bk1080BitBangBus<D> {
+impl<D: DelayNs> BkCommonBus for Bk1080BitBangBus<D> {
     type Error = Error;
 
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
@@ -154,7 +135,7 @@ pub struct Bk1080<BUS> {
 
 impl<BUS> Bk1080<BUS>
 where
-    BUS: Bk1080Bus,
+    BUS: BkCommonBus,
 {
     pub fn new(bus: BUS) -> Self {
         Self {

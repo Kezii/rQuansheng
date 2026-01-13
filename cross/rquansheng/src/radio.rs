@@ -9,9 +9,9 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
-use crate::bk1080::{Bk1080, Bk1080Bus};
+use crate::bk1080::Bk1080;
 use crate::bk4819::{AfOutSel, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
-use crate::bk4819_bitbang::Bk4819Bus;
+use crate::bk_common::BkCommonBus;
 use crate::dialer::Dialer;
 use crate::display::RenderingMgr;
 use crate::frequencies::{calculate_output_power_setting, FrequencyBand};
@@ -127,8 +127,8 @@ impl Events {
 
 pub struct RadioController<BUS, BUS1080, PLATFORM>
 where
-    BUS: Bk4819Bus,
-    BUS1080: Bk1080Bus,
+    BUS: BkCommonBus,
+    BUS1080: BkCommonBus,
     PLATFORM: RadioPlatform,
 {
     pub bk: Bk4819Driver<BUS>,
@@ -144,8 +144,8 @@ where
 
 impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
 where
-    BUS: Bk4819Bus,
-    BUS1080: Bk1080Bus,
+    BUS: BkCommonBus,
+    BUS1080: BkCommonBus,
     PLATFORM: RadioPlatform,
 {
     pub fn new(bk: Bk4819Driver<BUS>, bk1080: Bk1080<BUS1080>, mut platform: PLATFORM) -> Self {

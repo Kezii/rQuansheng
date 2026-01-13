@@ -1,9 +1,9 @@
 use log::info;
-use rquansheng::{DeviceRegister, bk1080::Bk1080Bus, bk4819_bitbang::Bk4819Bus};
+use rquansheng::bk_common::{BkCommonBus, DeviceRegister};
 
 pub struct DummyRadioBus;
 
-impl Bk4819Bus for DummyRadioBus {
+impl BkCommonBus for DummyRadioBus {
     type Error = std::io::Error;
 
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
@@ -35,7 +35,7 @@ impl Bk4819Bus for DummyRadioBus {
 
 pub struct DummyRadioBus1080;
 
-impl Bk1080Bus for DummyRadioBus1080 {
+impl BkCommonBus for DummyRadioBus1080 {
     type Error = std::io::Error;
 
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {

@@ -53,7 +53,7 @@ mod app {
     use heapless::Vec;
     use rquansheng::bk1080::{Bk1080, Bk1080BitBangBus};
     use rquansheng::bk4819::Bk4819Driver;
-    use rquansheng::bk4819_bitbang::{bk4819_sda_pin, Bk4819, Bk4819BitBang};
+    use rquansheng::bk4819_bitbang::{bk4819_sda_pin, Bk4819BitBang};
     use rquansheng::board::get_uart;
     use rquansheng::delay::CycleDelay;
     use rquansheng::display::DisplayMgr;
@@ -149,7 +149,7 @@ mod app {
 
         let delay_bb = CycleDelay::new(48_000_000);
         let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb);
-        let bk = Bk4819Driver::new(Bk4819::new(bus));
+        let bk = Bk4819Driver::new(bus);
 
         let platform = UVK5RadioPlatform::new(&cx.device.SYSCON, &cx.device.PORTCON);
 

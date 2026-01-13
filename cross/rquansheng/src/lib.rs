@@ -10,6 +10,7 @@ use panic_probe as _;
 pub mod bk1080;
 pub mod bk4819;
 pub mod bk4819_bitbang;
+pub mod bk_common;
 pub mod board;
 pub mod delay;
 pub mod dialer;
@@ -24,28 +25,6 @@ pub mod radio;
 pub mod radio_platform;
 
 use dp32g030 as _;
-
-pub trait DeviceRegister: Copy + From<u16> + Into<u16> + core::fmt::Debug + Default {
-    const ADDRESS: u8;
-
-    #[inline]
-    fn get_address() -> u8
-    where
-        Self: Sized,
-    {
-        Self::ADDRESS
-    }
-
-    #[inline]
-    fn serialize(self) -> u16 {
-        self.into()
-    }
-
-    #[inline]
-    fn deserialize(data: u16) -> Self {
-        Self::from(data)
-    }
-}
 
 // same panicking *behavior* as `panic-probe` but doesn't print a panic message
 // this prevents the panic message being printed *twice* when `defmt::panic` is invoked

@@ -29,7 +29,7 @@ impl {name} {{
     pub const fn get_address() -> u8 {{ {addr} }}
 }}
 
-impl crate::DeviceRegister for {name} {{
+impl crate::bk_common::DeviceRegister for {name} {{
     const ADDRESS: u8 = {addr};
 }}
 "#,

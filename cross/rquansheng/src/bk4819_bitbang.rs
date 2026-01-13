@@ -19,7 +19,7 @@ use embedded_hal::digital::{InputPin, OutputPin};
 
 use dp30g030_hal::gpio::{is_valid_pin, FlexPin, Port};
 
-use crate::DeviceRegister;
+use crate::bk_common::BkCommonBus;
 
 /// A bidirectional GPIO line (used for BK4819 SDA/SDIO).
 ///
@@ -32,17 +32,6 @@ pub trait BidiPin: OutputPin + InputPin {
     fn set_to_input(&mut self);
     /// Switch the pin to output mode (and optionally disable input buffer).
     fn set_to_output(&mut self);
-}
-
-/// A minimal bus trait for BK4819 register access.
-pub trait Bk4819Bus {
-    type Error;
-
-    fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error>;
-    fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error>;
-
-    fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), Self::Error>;
-    fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error>;
 }
 
 /// Bit-banged BK4819 bus implementation.
@@ -216,18 +205,9 @@ where
         self.sda.set_to_output();
         let _ = self.sda.set_high();
     }
-
-    pub fn write_reg_n<R: DeviceRegister>(&mut self, reg: R) {
-        self.write_reg_raw(R::ADDRESS, reg.serialize());
-    }
-
-    pub fn read_reg_n<R: DeviceRegister>(&mut self) -> R {
-        let value = self.read_reg_raw(R::ADDRESS);
-        <R as DeviceRegister>::deserialize(value)
-    }
 }
 
-impl<SCN, SCL, SDA, D> Bk4819Bus for Bk4819BitBang<SCN, SCL, SDA, D>
+impl<SCN, SCL, SDA, D> BkCommonBus for Bk4819BitBang<SCN, SCL, SDA, D>
 where
     SCN: OutputPin,
     SCL: OutputPin,
@@ -246,60 +226,6 @@ where
     fn read_reg_raw(&mut self, reg: u8) -> Result<u16, Self::Error> {
         let value = self.read_reg_raw(reg);
         Ok(value)
-    }
-
-    #[inline]
-    fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), Self::Error> {
-        Bk4819BitBang::write_reg_n(self, reg);
-        Ok(())
-    }
-
-    #[inline]
-    fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error> {
-        let value = Bk4819BitBang::read_reg_n::<R>(self);
-        Ok(value)
-    }
-}
-
-/// A thin convenience wrapper representing a BK4819 accessed through some bus.
-pub struct Bk4819<BUS> {
-    bus: BUS,
-}
-
-impl<BUS> Bk4819<BUS> {
-    #[inline]
-    pub const fn new(bus: BUS) -> Self {
-        Self { bus }
-    }
-
-    #[inline]
-    pub fn free(self) -> BUS {
-        self.bus
-    }
-}
-
-impl<BUS> Bk4819<BUS>
-where
-    BUS: Bk4819Bus,
-{
-    #[inline]
-    pub fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), BUS::Error> {
-        self.bus.write_reg_raw(reg, value)
-    }
-
-    #[inline]
-    pub fn read_reg_raw(&mut self, reg: u8) -> Result<u16, BUS::Error> {
-        self.bus.read_reg_raw(reg)
-    }
-
-    #[inline]
-    pub fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), BUS::Error> {
-        self.bus.write_reg(reg)
-    }
-
-    #[inline]
-    pub fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, BUS::Error> {
-        self.bus.read_reg::<R>()
     }
 }
 
