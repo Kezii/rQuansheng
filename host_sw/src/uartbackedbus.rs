@@ -48,7 +48,7 @@ impl SerialProtocolRadioBus {
         Ok(Self { port })
     }
 
-    fn send(&mut self, msg: &RadioBound) -> io::Result<()> {
+    pub fn send(&mut self, msg: &RadioBound) -> io::Result<()> {
         info!("send: {:?}", msg);
         let encoded = encode_line(msg)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
@@ -57,7 +57,7 @@ impl SerialProtocolRadioBus {
         Ok(())
     }
 
-    fn recv_hostbound(&mut self) -> io::Result<HostBound> {
+    pub fn recv_hostbound(&mut self) -> io::Result<HostBound> {
         let line = read_until_zero(&mut *self.port, 256)?;
         let decoded = decode_line::<HostBound>(&line)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()));

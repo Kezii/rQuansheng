@@ -236,37 +236,24 @@ mod app {
         let (mut tx, mut _rx) = uart1.split();
 
         loop {
-            let line = read_until_zero(&mut _rx, 64).await;
-            let line = line.unwrap_or(Vec::new());
+            let line = read_until_zero(&mut _rx, rquansheng::messages::MAX_FRAME_LEN).await;
+            let line = line.unwrap_or_default();
             cx.local.pin_flashlight.set_high();
 
             let message = decode_line::<RadioBound>(&line);
 
             if let Ok(message) = message {
-                match message {
-                    RadioBound::Ping => {
-                        HostBound::Pong.write(&mut tx).await.unwrap();
-                    }
+                let reply: Option<HostBound> = cx.shared.radio.lock(|r| match message {
+                    RadioBound::Ping => Some(HostBound::Pong),
 
                     RadioBound::WriteBk4819Register(reg, value) => {
-                        cx.shared
-                            .radio
-                            .lock(|r| r.bk.__internal_write_register_raw(reg, value));
-                        HostBound::WriteAck(reg, value)
-                            .write(&mut tx)
-                            .await
-                            .unwrap();
+                        r.bk.__internal_write_register_raw(reg, value);
+                        Some(HostBound::WriteAck(reg, value))
                     }
 
                     RadioBound::ReadBk4819Register(reg) => {
-                        let value = cx
-                            .shared
-                            .radio
-                            .lock(|r| r.bk.__internal_read_register_raw(reg));
-                        HostBound::Register(reg, value.unwrap_or(0))
-                            .write(&mut tx)
-                            .await
-                            .unwrap();
+                        let value = r.bk.__internal_read_register_raw(reg);
+                        Some(HostBound::Register(reg, value.unwrap_or(0)))
                     }
 
                     RadioBound::ReadEepromByte { address } => {
@@ -275,52 +262,43 @@ mod app {
                         cx.shared.i2c_lock.lock(|_| {
                             let mut d = CycleDelay::new(48_000_000);
                             let mut buf = [0u8; 1];
-                            if rquansheng::eeprom::read_buffer(&mut d, address, &mut buf).is_ok() {
-                                value = buf[0];
-                            } else {
-                                value = 0;
-                            }
+                            value = rquansheng::eeprom::read_buffer(&mut d, address, &mut buf)
+                                .ok()
+                                .map(|_| buf[0])
+                                .unwrap_or(0);
                         });
 
-                        HostBound::EepromByte { address, value }
-                            .write(&mut tx)
-                            .await
-                            .unwrap();
+                        Some(HostBound::EepromByte { address, value })
                     }
 
                     RadioBound::WriteBk1080Register(reg, value) => {
-                        let _ = cx
-                            .shared
-                            .radio
-                            .lock(|r| r.bk1080.__internal_write_register_raw(reg, value));
-                        HostBound::WriteAck(reg, value)
-                            .write(&mut tx)
-                            .await
-                            .unwrap();
+                        let _ = r.bk1080.__internal_write_register_raw(reg, value);
+                        Some(HostBound::WriteAck(reg, value))
                     }
 
                     RadioBound::ReadBk1080Register(reg) => {
-                        let value = cx
-                            .shared
-                            .radio
-                            .lock(|r| r.bk1080.__internal_read_register_raw(reg));
-                        HostBound::Register(reg, value.unwrap_or(0))
-                            .write(&mut tx)
-                            .await
-                            .unwrap();
+                        let value = r.bk1080.__internal_read_register_raw(reg);
+                        Some(HostBound::Register(reg, value.unwrap_or(0)))
                     }
 
                     RadioBound::SetAudioPath(on) => {
-                        cx.shared.radio.lock(|r| r.platform.set_audio_path(on));
+                        r.platform.set_audio_path(on);
+                        None
                     }
 
                     RadioBound::SetBacklight(on) => {
-                        cx.shared.radio.lock(|r| r.platform.set_backlight(on));
+                        r.platform.set_backlight(on);
+                        None
                     }
 
                     RadioBound::SetFlashlight(on) => {
-                        cx.shared.radio.lock(|r| r.platform.set_flashlight(on));
+                        r.platform.set_flashlight(on);
+                        None
                     }
+                });
+
+                if let Some(reply) = reply {
+                    let _ = reply.write(&mut tx).await;
                 }
             }
             cx.local.pin_flashlight.set_low();
@@ -350,7 +328,7 @@ mod app {
             cx.local.display.display.flush().unwrap();
 
             let left = cx.local.display_update_reader.wait();
-            let right = Mono::delay(100.millis());
+            let right = Mono::delay(500.millis());
             embassy_futures::select::select(left, right).await;
         }
     }
@@ -388,17 +366,11 @@ mod app {
 
             let event = cx.local.keyboard_state.eat_key(key);
 
-            // Do everything that touches BK4819 under one lock, then act on the GPIO audio path.
-
             cx.shared.radio.lock(|r| {
                 r.eat_keyboard_event(event, &mut CycleDelay::new(48_000_000));
 
-                //r.eat_ptt(ptt_stable, &mut cx.local.radio_delay);
-
-                // Poll BK IRQ/status (C-style) and update internal state/LED/AF.
                 r.poll_interrupts().ok();
 
-                // Board audio path should follow controller's desired state.
                 r.think_platform()
             });
 

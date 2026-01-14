@@ -1,45 +1,69 @@
+use std::collections::HashMap;
 use std::io::Write;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
 
+use host_sw::uartbackedbus::SerialProtocolRadioBus;
 use host_sw::uartbackedbus::read_line_from_port;
+use rquansheng::bk_common::BkCommonBus;
+use rquansheng::bk4819::Reg37;
 use rquansheng::messages::HostBound;
 use rquansheng::messages::RadioBound;
-use rquansheng::messages::decode_line;
-use rquansheng::messages::encode_line;
 
 fn main() {
-    let mut port = serialport::new("/dev/ttyUSB0", 38400)
-        .timeout(Duration::from_millis(5000))
-        .open()
-        .expect("Failed to open port");
+    env_logger::init();
 
-    let mut port_clone = port.try_clone().unwrap();
+    let mut bus =
+        SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(100)).unwrap();
 
-    let (tx, rx) = mpsc::channel();
+    let mut latency_hist = HashMap::new();
 
-    let _ = thread::spawn(move || {
-        loop {
-            let line = read_line_from_port(&mut port, 256).unwrap();
-            let reply = decode_line::<HostBound>(&line).unwrap();
-            println!("Reply: {:?}", reply);
-            tx.send(reply).unwrap();
-        }
-    });
+    // ctrl c handle
+
+    let mut should_run = Arc::new(AtomicBool::new(true));
+    let should_run_clone = should_run.clone();
+
+    ctrlc::set_handler(move || {
+        println!("received Ctrl+C!");
+        should_run_clone.store(false, Ordering::Relaxed);
+    })
+    .expect("Error setting Ctrl-C handler");
 
     let mut now = std::time::Instant::now();
     loop {
-        let ping = RadioBound::ReadBk4819Register(0x02);
-        let ping_encoded = encode_line(&ping).unwrap();
-        port_clone.write_all(&ping_encoded).unwrap();
+        //let reg = Reg37::new().with_dsp_en(true).serialize();
 
-        let _ = rx.recv().unwrap();
-        let _ = rx.try_recv();
+        //bus.write_reg_raw(0x37, reg).unwrap();
+
+        //bus.send(&RadioBound::Ping).unwrap();
+        //assert_eq!(bus.recv_hostbound().unwrap(), HostBound::Pong);
+
+        bus.read_reg_raw(0x37).unwrap();
 
         let elapsed = now.elapsed();
+
+        latency_hist.insert(
+            elapsed.as_millis(),
+            latency_hist.get(&elapsed.as_millis()).unwrap_or(&0) + 1,
+        );
         println!("messages per second: {}", 1.0 / elapsed.as_secs_f64());
         now = std::time::Instant::now();
+
+        if !should_run.load(Ordering::Relaxed) {
+            break;
+        }
+    }
+
+    let mut as_vec = latency_hist.iter().collect::<Vec<_>>();
+
+    as_vec.sort_by_key(|(latency, _)| *latency);
+
+    for (latency, count) in as_vec {
+        println!("latency: {}ms, count: {}", latency, count);
     }
 }
 
