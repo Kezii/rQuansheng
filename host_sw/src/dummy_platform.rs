@@ -1,9 +1,19 @@
+use std::sync::mpsc::Receiver;
+
 use log::info;
-use rquansheng::radio_platform::RadioPlatform;
+use rquansheng::{keyboard::KeyEvent, radio_platform::RadioPlatform};
 
-pub struct DummyPlatform;
+pub struct HostedPlatform {
+    receiver: Receiver<KeyEvent>,
+}
 
-impl RadioPlatform for DummyPlatform {
+impl HostedPlatform {
+    pub fn new(receiver: Receiver<KeyEvent>) -> Self {
+        Self { receiver }
+    }
+}
+
+impl RadioPlatform for HostedPlatform {
     fn eeprom_read(&mut self, address: u16, data: &mut [u8]) -> Result<(), Self::EepromError> {
         const EEPROM_DUMP: &[u8] = include_bytes!("../../docs/eeprom_dump.bin");
 
@@ -39,5 +49,10 @@ impl RadioPlatform for DummyPlatform {
 
     fn bk1080_enabled(&mut self, enabled: bool) {
         info!("bk1080_enabled: {}", enabled);
+    }
+
+    fn poll_keyboard(&mut self) -> Option<KeyEvent> {
+        info!("poll_keyboard");
+        self.receiver.try_recv().ok()
     }
 }

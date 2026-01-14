@@ -140,6 +140,7 @@ where
     audio_on: bool,
     rendering_mgr: RenderingMgr,
     dialer: Dialer<8>,
+    should_update_display: bool,
 }
 
 impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
@@ -151,6 +152,7 @@ where
     pub fn new(bk: Bk4819Driver<BUS>, bk1080: Bk1080<BUS1080>, mut platform: PLATFORM) -> Self {
         platform.set_audio_path(false);
         platform.set_backlight(true);
+
         Self {
             bk,
             bk1080,
@@ -161,6 +163,7 @@ where
             audio_on: false,
             rendering_mgr: RenderingMgr::default(),
             dialer: Dialer::default(),
+            should_update_display: false,
         }
     }
 
@@ -215,7 +218,9 @@ where
         Ok(())
     }
 
-    pub fn eat_keyboard_event<D: DelayNs>(&mut self, event: Option<KeyEvent>, delay: &mut D) {
+    pub fn eat_keyboard_event<D: DelayNs>(&mut self, delay: &mut D) {
+        let event = self.platform.poll_keyboard();
+
         if let Some(KeyEvent::KeyPressed(QuanshengKey::Ptt)) = event {
             let _ = self.enter_tx(delay);
         }
@@ -227,12 +232,19 @@ where
 
         if let Some(event) = event {
             self.dialer.eat_keyboard_event(event);
+            self.should_update_display = true;
         }
 
         if let Some(frequency) = self.dialer.get_frequency() {
             self.channel_cfg.freq = frequency * 10;
             log::info!("dialed frequency: {}", self.channel_cfg.freq);
         }
+    }
+
+    pub fn should_update_display(&mut self) -> bool {
+        let should_update = self.should_update_display;
+        self.should_update_display = false;
+        should_update
     }
 
     pub fn render_display<D: DrawTarget<Color = BinaryColor>>(

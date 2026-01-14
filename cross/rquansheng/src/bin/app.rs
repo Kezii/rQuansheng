@@ -47,8 +47,8 @@ static SERIAL: StaticCell<dp30g030_hal::uart::Uart1> = StaticCell::new();
 mod app {
     use defmt::info;
     use dp30g030_hal::adc;
-    use dp30g030_hal::gpio::{Input, Output, Pin, Port};
-    use embedded_hal::digital::{InputPin, OutputPin};
+    use dp30g030_hal::gpio::{Output, Pin, Port};
+    use embedded_hal::digital::OutputPin;
     use embedded_io_async::Read as AsyncRead;
     use heapless::Vec;
     use rquansheng::bk1080::{Bk1080, Bk1080BitBangBus};
@@ -57,7 +57,6 @@ mod app {
     use rquansheng::board::get_uart;
     use rquansheng::delay::CycleDelay;
     use rquansheng::display::DisplayMgr;
-    use rquansheng::keyboard::KeyboardState;
     use rquansheng::messages::{decode_line, HostBound, RadioBound};
     use rquansheng::radio::RadioController;
     use rquansheng::radio_platform::UVK5RadioPlatform;
@@ -106,17 +105,12 @@ mod app {
             Bk1080BitBangBus<CycleDelay>,
             UVK5RadioPlatform,
         >,
-        /// Lock for PA10/PA11 shared between keypad scanning and EEPROM (bit-banged I2C).
-        i2c_lock: (),
-        //dialer: Dialer,
     }
 
     // Local resources go here
     #[local]
     struct Local {
-        pin_ptt: Pin<Input>,
         adc: adc::Adc,
-        keyboard_state: KeyboardState,
         display: DisplayMgr,
         display_update_reader: SignalReader<'static, bool>,
         display_update_writer: SignalWriter<'static, bool>,
@@ -159,11 +153,6 @@ mod app {
 
         let mut radio = RadioController::new(bk, bk1080, platform);
 
-        // PTT is PC5, active-low, with pull-up enabled in the reference firmware.
-        // We do simple polling + debounce in `radio_10ms_task`.
-        let pin_ptt: Pin<Input> =
-            Pin::new(Port::C, 5).into_pull_up_input(&cx.device.SYSCON, &cx.device.PORTCON);
-
         // SARADC: battery voltage is on SARADC CH4, pin PA9.
         // C firmware conversion: v_10mV = raw * 760 / gBatteryCalibration[3].
         // We do not use EEPROM calibration here; keep a default in the middle
@@ -197,20 +186,15 @@ mod app {
         radio_10ms_task::spawn().ok();
         display_task::spawn().ok();
 
-        let keyboard_state = rquansheng::keyboard::KeyboardState::default();
-
         (
             Shared {
                 // Initialization of shared resources go here
                 radio,
-                i2c_lock: (),
             },
             Local {
                 // Initialization of local resources go here
-                pin_ptt,
                 adc,
                 display,
-                keyboard_state,
                 display_update_reader,
                 display_update_writer,
                 pin_flashlight,
@@ -228,7 +212,7 @@ mod app {
         }
     }
 
-    #[task(priority = 1, local = [pin_flashlight], shared = [radio, i2c_lock])]
+    #[task(priority = 1, local = [pin_flashlight], shared = [radio])]
     async fn uart_task(mut cx: uart_task::Context) {
         use rquansheng::radio_platform::RadioPlatform;
 
@@ -257,16 +241,12 @@ mod app {
                     }
 
                     RadioBound::ReadEepromByte { address } => {
-                        let mut value: u8 = 0;
-
-                        cx.shared.i2c_lock.lock(|_| {
-                            let mut d = CycleDelay::new(48_000_000);
-                            let mut buf = [0u8; 1];
-                            value = rquansheng::eeprom::read_buffer(&mut d, address, &mut buf)
-                                .ok()
-                                .map(|_| buf[0])
-                                .unwrap_or(0);
-                        });
+                        let mut d = CycleDelay::new(48_000_000);
+                        let mut buf = [0u8; 1];
+                        let value = rquansheng::eeprom::read_buffer(&mut d, address, &mut buf)
+                            .ok()
+                            .map(|_| buf[0])
+                            .unwrap_or(0);
 
                         Some(HostBound::EepromByte { address, value })
                     }
@@ -334,50 +314,25 @@ mod app {
     }
 
     /// 10ms tick task: poll+debounce PTT, poll BK4819 interrupts, and update audio.
-    #[task(priority = 1, shared = [radio, i2c_lock], local = [pin_ptt, keyboard_state,display_update_writer])]
+    #[task(priority = 1, shared = [radio], local = [display_update_writer])]
     async fn radio_10ms_task(mut cx: radio_10ms_task::Context) {
         // Simple debounce (like C firmware): require 3 consecutive 10ms samples.
-        let mut ptt_last_sample = false;
-        let mut ptt_stable = false;
-        let mut ptt_stable_count: u8 = 0;
 
         loop {
-            // Active-low: pressed when pin is low.
-            let pressed_now = cx.local.pin_ptt.is_low().unwrap_or(false);
-
-            if pressed_now == ptt_last_sample {
-                ptt_stable_count = ptt_stable_count.saturating_add(1);
-            } else {
-                ptt_last_sample = pressed_now;
-                ptt_stable_count = 0;
-            }
-
-            if ptt_stable_count >= 3 {
-                ptt_stable = pressed_now;
-            }
-
-            let key = if ptt_stable {
-                Some(rquansheng::keyboard::QuanshengKey::Ptt)
-            } else {
-                cx.shared.i2c_lock.lock(|_| {
-                    rquansheng::keyboard::Keyboard::init().poll(&mut CycleDelay::new(48_000_000))
-                })
-            };
-
-            let event = cx.local.keyboard_state.eat_key(key);
-
-            cx.shared.radio.lock(|r| {
-                r.eat_keyboard_event(event, &mut CycleDelay::new(48_000_000));
+            let should_update_display = cx.shared.radio.lock(|r| {
+                r.eat_keyboard_event(&mut CycleDelay::new(48_000_000));
 
                 r.poll_interrupts().ok();
 
-                r.think_platform()
+                r.think_platform();
+
+                r.should_update_display()
             });
 
-            // if a key was pressed, we hurry a display update
-            if let Some(key) = event {
+            // we let the radio business logic decide if the display should be updated sooner
+
+            if should_update_display {
                 cx.local.display_update_writer.write(true);
-                defmt::info!("key pressed: {:?}", key);
             }
 
             Mono::delay(10.millis()).await;

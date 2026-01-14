@@ -35,12 +35,15 @@ fn main() -> Result<(), core::convert::Infallible> {
     let radio_bus =
         SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(5000)).unwrap();
     let mut dummy_delay = host_sw::delay::DummyDelay;
-    let dummy_platform = host_sw::dummy_platform::DummyPlatform;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    let hosted_platform = host_sw::dummy_platform::HostedPlatform::new(rx);
 
     let bus_1080 = DummyRadioBus1080;
     let bk1080 = Bk1080::new(bus_1080);
 
-    let mut radio = RadioController::new(Bk4819Driver::new(radio_bus), bk1080, dummy_platform);
+    let mut radio = RadioController::new(Bk4819Driver::new(radio_bus), bk1080, hosted_platform);
     window.update(&display);
 
     'main: loop {
@@ -62,7 +65,11 @@ fn main() -> Result<(), core::convert::Infallible> {
                 wait = true;
             }
 
-            radio.eat_keyboard_event(simulator_event_to_quansheng_key(event), &mut dummy_delay);
+            if let Some(event) = simulator_event_to_quansheng_key(event) {
+                tx.send(event).unwrap();
+            }
+
+            radio.eat_keyboard_event(&mut dummy_delay);
         }
 
         window.update(&display);

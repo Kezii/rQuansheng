@@ -1,8 +1,10 @@
-use dp30g030_hal::gpio::{Output, Pin, Port};
+use dp30g030_hal::gpio::{Input, Output, Pin, Port};
 use dp32g030::{PORTCON, SYSCON};
+use embedded_hal::digital::InputPin;
 
 use crate::delay::CycleDelay;
 use crate::eeprom;
+use crate::keyboard::{KeyEvent, Keyboard, KeyboardState, QuanshengKey};
 
 pub trait RadioPlatform {
     type EepromError;
@@ -14,6 +16,8 @@ pub trait RadioPlatform {
     fn set_flashlight(&mut self, on: bool);
     fn set_audio_path(&mut self, on: bool);
     fn bk1080_enabled(&mut self, enabled: bool);
+
+    fn poll_keyboard(&mut self) -> Option<KeyEvent>;
 }
 
 pub struct UVK5RadioPlatform {
@@ -21,6 +25,9 @@ pub struct UVK5RadioPlatform {
     pin_flashlight: Pin<Output>,
     pin_audio_path: Pin<Output>,
     pin_bk1080_enable: Pin<Output>,
+    pin_ptt: Pin<Input>,
+    ptt_debouncer: DebounceBool,
+    keyboard_state: KeyboardState,
 }
 
 impl UVK5RadioPlatform {
@@ -29,11 +36,16 @@ impl UVK5RadioPlatform {
         let pin_backlight = Pin::new(Port::B, 6).into_push_pull_output(syscon, portcon);
         let pin_audio_path = Pin::new(Port::C, 4).into_push_pull_output(syscon, portcon);
         let pin_bk1080_enable = Pin::new(Port::B, 15).into_push_pull_output(syscon, portcon);
+        let pin_ptt = Pin::new(Port::C, 5).into_pull_up_input(syscon, portcon);
+        let ptt_debouncer = DebounceBool::new(3);
         Self {
             pin_flashlight,
             pin_backlight,
             pin_audio_path,
             pin_bk1080_enable,
+            pin_ptt,
+            ptt_debouncer,
+            keyboard_state: KeyboardState::default(),
         }
     }
 }
@@ -83,5 +95,59 @@ impl RadioPlatform for UVK5RadioPlatform {
         } else {
             let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_bk1080_enable);
         }
+    }
+
+    fn poll_keyboard(&mut self) -> Option<KeyEvent> {
+        let pressed_now = self.pin_ptt.is_low().unwrap_or(false);
+        let ptt_stable = self.ptt_debouncer.update(pressed_now);
+        let key = if ptt_stable {
+            Some(QuanshengKey::Ptt)
+        } else {
+            Keyboard::init().poll(&mut CycleDelay::new(48_000_000))
+        };
+
+        self.keyboard_state.eat_key(key)
+    }
+}
+
+pub struct DebounceBool {
+    threshold: u8,
+    last_sample: bool,
+    stable: bool,
+    stable_count: u8,
+}
+
+impl DebounceBool {
+    fn new(threshold: u8) -> Self {
+        Self {
+            threshold,
+            last_sample: false,
+            stable: false,
+            stable_count: 0,
+        }
+    }
+
+    /// Feeds one sample and returns the current stable value.
+    fn update(&mut self, sample: bool) -> bool {
+        // Threshold == 0 => no debounce.
+        if self.threshold == 0 {
+            self.last_sample = sample;
+            self.stable = sample;
+            self.stable_count = 0;
+            return self.stable;
+        }
+
+        if sample == self.last_sample {
+            self.stable_count = self.stable_count.saturating_add(1);
+        } else {
+            self.last_sample = sample;
+            self.stable_count = 0;
+        }
+
+        if self.stable_count >= self.threshold {
+            self.stable = sample;
+        }
+
+        self.stable
     }
 }

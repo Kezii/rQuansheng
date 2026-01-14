@@ -5,7 +5,7 @@ use std::{
 
 use log::{error, info};
 use rquansheng::{
-    bk_common::{BkCommonBus, DeviceRegister},
+    bk_common::BkCommonBus,
     messages::{HostBound, RadioBound, decode_line, encode_line},
 };
 use serialport::SerialPort;
