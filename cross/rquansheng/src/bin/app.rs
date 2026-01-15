@@ -48,18 +48,18 @@ mod app {
     use defmt::info;
     use dp30g030_hal::adc;
     use dp30g030_hal::gpio::{Output, Pin, Port};
-    use embedded_hal::digital::OutputPin;
+    use embedded_hal::digital::{InputPin, OutputPin};
     use embedded_io_async::Read as AsyncRead;
     use heapless::Vec;
     use rquansheng::bk1080::{Bk1080, Bk1080BitBangBus};
     use rquansheng::bk4819::Bk4819Driver;
     use rquansheng::bk4819_bitbang::{bk4819_sda_pin, Bk4819BitBang};
-    use rquansheng::board::get_uart;
+    use rquansheng::board::{get_ptt_pin, get_uart};
     use rquansheng::delay::CycleDelay;
     use rquansheng::display::DisplayMgr;
     use rquansheng::messages::{decode_line, HostBound, RadioBound};
     use rquansheng::radio::RadioController;
-    use rquansheng::radio_platform::UVK5RadioPlatform;
+    use rquansheng::radio_platform::{DebounceBool, UVK5RadioPlatform};
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
     use rtic_sync::signal::{Signal, SignalReader, SignalWriter};
 
@@ -221,12 +221,19 @@ mod app {
 
         loop {
             let line = read_until_zero(&mut _rx, rquansheng::messages::MAX_FRAME_LEN).await;
-            let line = line.unwrap_or_default();
-            cx.local.pin_flashlight.set_high();
+
+            let line = if let Ok(line) = line {
+                line
+            } else {
+                Mono::delay(10.millis()).await;
+                continue;
+            };
 
             let message = decode_line::<RadioBound>(&line);
 
             if let Ok(message) = message {
+                cx.local.pin_flashlight.set_high();
+
                 let reply: Option<HostBound> = cx.shared.radio.lock(|r| match message {
                     RadioBound::Ping => Some(HostBound::Pong),
 
@@ -280,8 +287,10 @@ mod app {
                 if let Some(reply) = reply {
                     let _ = reply.write(&mut tx).await;
                 }
+                cx.local.pin_flashlight.set_low();
+            } else {
+                Mono::delay(10.millis()).await;
             }
-            cx.local.pin_flashlight.set_low();
         }
     }
 

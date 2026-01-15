@@ -3,6 +3,8 @@ use dp30g030_hal::{
     uart,
 };
 
+use dp30g030_hal::gpio::Input;
+
 pub fn get_uart() -> uart::Uart1 {
     let p = unsafe { dp32g030::Peripherals::steal() };
     let uart1 = p.UART1;
@@ -20,4 +22,11 @@ pub fn get_uart() -> uart::Uart1 {
     .unwrap();
 
     uart1
+}
+
+pub fn get_ptt_pin() -> Pin<Input> {
+    let p = unsafe { dp32g030::Peripherals::steal() };
+    let syscon = p.SYSCON;
+    let portcon = p.PORTCON;
+    Pin::new(Port::C, 5).into_pull_up_input(&syscon, &portcon)
 }

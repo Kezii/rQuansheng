@@ -2,6 +2,7 @@ use dp30g030_hal::gpio::{Input, Output, Pin, Port};
 use dp32g030::{PORTCON, SYSCON};
 use embedded_hal::digital::InputPin;
 
+use crate::board::get_ptt_pin;
 use crate::delay::CycleDelay;
 use crate::eeprom;
 use crate::keyboard::{KeyEvent, Keyboard, KeyboardState, QuanshengKey};
@@ -36,7 +37,7 @@ impl UVK5RadioPlatform {
         let pin_backlight = Pin::new(Port::B, 6).into_push_pull_output(syscon, portcon);
         let pin_audio_path = Pin::new(Port::C, 4).into_push_pull_output(syscon, portcon);
         let pin_bk1080_enable = Pin::new(Port::B, 15).into_push_pull_output(syscon, portcon);
-        let pin_ptt = Pin::new(Port::C, 5).into_pull_up_input(syscon, portcon);
+        let pin_ptt = get_ptt_pin();
         let ptt_debouncer = DebounceBool::new(3);
         Self {
             pin_flashlight,
@@ -118,7 +119,7 @@ pub struct DebounceBool {
 }
 
 impl DebounceBool {
-    fn new(threshold: u8) -> Self {
+    pub fn new(threshold: u8) -> Self {
         Self {
             threshold,
             last_sample: false,
@@ -128,7 +129,7 @@ impl DebounceBool {
     }
 
     /// Feeds one sample and returns the current stable value.
-    fn update(&mut self, sample: bool) -> bool {
+    pub fn update(&mut self, sample: bool) -> bool {
         // Threshold == 0 => no debounce.
         if self.threshold == 0 {
             self.last_sample = sample;
