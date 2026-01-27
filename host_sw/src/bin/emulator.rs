@@ -27,8 +27,7 @@ fn main() -> Result<(), core::convert::Infallible> {
             color_off: Rgb888::new(216, 127, 64),
             color_on: Rgb888::new(49, 22, 13),
         })
-        .scale(4)
-        .pixel_aspect_ratio(2, 3)
+        .scale_non_square(8,12) 
         .build();
     let mut window = Window::new("rQuansheng", &output_settings);
 
