@@ -58,7 +58,7 @@ mod app {
     use rquansheng::delay::CycleDelay;
     use rquansheng::display::DisplayMgr;
     use rquansheng::messages::{decode_line, HostBound, RadioBound};
-    use rquansheng::radio::RadioController;
+    use rquansheng::radio::{RadioController, Screen};
     use rquansheng::radio_platform::{DebounceBool, UVK5RadioPlatform};
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
     use rtic_sync::signal::{Signal, SignalReader, SignalWriter};
@@ -312,7 +312,7 @@ mod app {
             let _ = cx
                 .shared
                 .radio
-                .lock(|r| r.render_display(&mut cx.local.display.display));
+                .lock(|r| r.render_display(&mut cx.local.display.display, Screen::RadioState));
 
             cx.local.display.display.flush().unwrap();
 

@@ -45,7 +45,6 @@ impl crate::bk_common::DeviceRegister for {name} {{
     out
 }
 
-
 fn parse_single_literal(attr: TokenStream) -> String {
     let mut it = attr.into_iter();
 

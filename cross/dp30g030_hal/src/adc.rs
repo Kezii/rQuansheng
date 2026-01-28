@@ -350,7 +350,6 @@ impl Adc {
             .write(|w| unsafe { w.adc_chx_eoc_ist().bits(ch.bit()) });
 
         // Read data from the per-channel DATA register (12-bit).
-        
 
         match ch {
             Channel::Ch0 => regs.adc_ch0_data().read().adc_ch_data().bits(),

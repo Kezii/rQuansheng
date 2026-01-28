@@ -4,7 +4,7 @@ use embedded_graphics::{
     mono_font::MonoTextStyle,
     pixelcolor::BinaryColor,
     prelude::{Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle},
+    primitives::{PrimitiveStyle, Rectangle, StyledDrawable},
     text::Text,
     Pixel,
 };
@@ -222,6 +222,32 @@ impl RenderingMgr {
                 display.draw_iter(core::iter::once(pixel))?;
             }
         }
+
+        Ok(())
+    }
+
+    pub fn render_splash<D: DrawTarget<Color = BinaryColor>>(
+        &mut self,
+        display: &mut D,
+        splash: &[u8; 1024],
+    ) -> Result<(), D::Error> {
+        display.clear(BinaryColor::Off)?;
+
+        // `splash` è nel layout ST7565 "page buffer":
+        // - index = page*128 + x
+        // - bit = 1 << (y%8), page = y/8
+        let pixels = splash.iter().copied().enumerate().flat_map(|(i, byte)| {
+            let x = (i % 128) as i32;
+            let page = (i / 128) as i32;
+            (0u8..8).filter_map(move |bit| {
+                if (byte & (1u8 << bit)) != 0 {
+                    Some(Pixel(Point::new(x, page * 8 + bit as i32), BinaryColor::On))
+                } else {
+                    None
+                }
+            })
+        });
+        display.draw_iter(pixels)?;
 
         Ok(())
     }

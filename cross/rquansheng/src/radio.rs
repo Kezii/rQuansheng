@@ -125,6 +125,12 @@ impl Events {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Screen {
+    RadioState,
+    Splash,
+}
+
 pub struct RadioController<BUS, BUS1080, PLATFORM>
 where
     BUS: BkCommonBus,
@@ -250,16 +256,24 @@ where
     pub fn render_display<D: DrawTarget<Color = BinaryColor>>(
         &mut self,
         display: &mut D,
+        screen: Screen,
     ) -> Result<(), BUS::Error> {
         let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
 
-        let _ = self.rendering_mgr.render_main(
-            display,
-            self.channel_cfg,
-            rssi,
-            &self.dialer,
-            self.mode,
-        );
+        match screen {
+            Screen::RadioState => {
+                let _ = self.rendering_mgr.render_main(
+                    display,
+                    self.channel_cfg,
+                    rssi,
+                    &self.dialer,
+                    self.mode,
+                );
+            }
+            Screen::Splash => {
+                //let _ = self.rendering_mgr.render_splash(display, &[]);
+            }
+        }
 
         Ok(())
     }

@@ -13,7 +13,7 @@ use rquansheng::{
     bk1080::Bk1080,
     bk4819::Bk4819Driver,
     keyboard::{KeyEvent, QuanshengKey},
-    radio::RadioController,
+    radio::{RadioController, Screen},
 };
 use std::time::Duration;
 
@@ -27,7 +27,7 @@ fn main() -> Result<(), core::convert::Infallible> {
             color_off: Rgb888::new(216, 127, 64),
             color_on: Rgb888::new(49, 22, 13),
         })
-        .scale_non_square(8,12) 
+        .scale_non_square(Size::new(8, 12))
         .build();
     let mut window = Window::new("rQuansheng", &output_settings);
 
@@ -46,7 +46,9 @@ fn main() -> Result<(), core::convert::Infallible> {
     window.update(&display);
 
     'main: loop {
-        radio.render_display(&mut display).unwrap();
+        radio
+            .render_display(&mut display, Screen::RadioState)
+            .unwrap();
 
         let mut wait = false;
 
