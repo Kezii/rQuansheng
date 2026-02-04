@@ -44,9 +44,21 @@ pub enum Modulation {
 #[repr(i8)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum OutputPower {
-    Low = 0,
+    Off,
+    Low,
     Mid,
     High,
+}
+
+impl OutputPower {
+    pub fn to_eeprom_index(self) -> Option<u16> {
+        match self {
+            OutputPower::Low => Some(0),
+            OutputPower::Mid => Some(1),
+            OutputPower::High => Some(2),
+            _ => None,
+        }
+    }
 }
 
 #[repr(i8)]
@@ -107,7 +119,7 @@ impl Default for ChannelConfig {
             roger_mode: RogerMode::Roger,
             code_type: CodeType::None,
             modulation: Modulation::FM,
-            output_power: OutputPower::Low,
+            output_power: OutputPower::Off,
             squelch_level: SquelchLevel::Squelch1,
         }
     }
@@ -253,17 +265,13 @@ where
         should_update
     }
 
-    pub fn render_display<D: DrawTarget<Color = BinaryColor>>(
-        &mut self,
-        display: &mut D,
-        screen: Screen,
-    ) -> Result<(), BUS::Error> {
+    pub fn render_display(&mut self, screen: Screen) -> Result<(), BUS::Error> {
         let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
 
         match screen {
             Screen::RadioState => {
                 let _ = self.rendering_mgr.render_main(
-                    display,
+                    &mut self.platform,
                     self.channel_cfg,
                     rssi,
                     &self.dialer,
@@ -274,6 +282,8 @@ where
                 //let _ = self.rendering_mgr.render_splash(display, &[]);
             }
         }
+
+        self.platform.flush_display().unwrap();
 
         Ok(())
     }
@@ -382,7 +392,12 @@ where
 
         let band_idx = band.eeprom_index();
 
-        let pwr_idx: u16 = self.channel_cfg.output_power as u16;
+        let pwr_idx = self.channel_cfg.output_power.to_eeprom_index();
+
+        let pwr_idx = match pwr_idx {
+            Some(idx) => idx,
+            None => return Ok(0),
+        };
 
         let addr = 0x1ED0u16 + (band_idx * 16) + (pwr_idx * 3);
 

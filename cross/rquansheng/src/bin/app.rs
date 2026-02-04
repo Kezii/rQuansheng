@@ -111,7 +111,6 @@ mod app {
     #[local]
     struct Local {
         adc: adc::Adc,
-        display: DisplayMgr,
         display_update_reader: SignalReader<'static, bool>,
         display_update_writer: SignalWriter<'static, bool>,
         pin_flashlight: Pin<Output>,
@@ -145,7 +144,8 @@ mod app {
         let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb);
         let bk = Bk4819Driver::new(bus);
 
-        let platform = UVK5RadioPlatform::new(&cx.device.SYSCON, &cx.device.PORTCON);
+        let platform =
+            UVK5RadioPlatform::new(cx.device.SPI0, &cx.device.SYSCON, &cx.device.PORTCON);
 
         let delay_bb_1080 = CycleDelay::new(48_000_000);
         let bus_1080 = Bk1080BitBangBus::uvk5_shared(delay_bb_1080);
@@ -172,9 +172,6 @@ mod app {
 
         let (display_update_writer, display_update_reader) = cx.local.poke_display_update.split();
 
-        info!("Initializing display");
-        let display = DisplayMgr::new(cx.device.SPI0, &cx.device.SYSCON, &cx.device.PORTCON);
-
         Mono::start(cx.core.SYST, 48_000_000);
 
         info!("Initializing radio");
@@ -194,7 +191,6 @@ mod app {
             Local {
                 // Initialization of local resources go here
                 adc,
-                display,
                 display_update_reader,
                 display_update_writer,
                 pin_flashlight,
@@ -306,15 +302,13 @@ mod app {
         }
     }
 
-    #[task(priority = 1, local = [display,display_update_reader], shared = [radio])]
+    #[task(priority = 1, local = [display_update_reader], shared = [radio])]
     async fn display_task(mut cx: display_task::Context) {
         loop {
             let _ = cx
                 .shared
                 .radio
-                .lock(|r| r.render_display(&mut cx.local.display.display, Screen::RadioState));
-
-            cx.local.display.display.flush().unwrap();
+                .lock(|r| r.render_display(Screen::RadioState));
 
             let left = cx.local.display_update_reader.wait();
             let right = Mono::delay(500.millis());

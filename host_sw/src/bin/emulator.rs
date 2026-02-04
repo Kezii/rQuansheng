@@ -17,7 +17,10 @@ use rquansheng::{
 };
 use std::time::Duration;
 
-use host_sw::{dummyradiobus::DummyRadioBus1080, uartbackedbus::SerialProtocolRadioBus};
+use host_sw::{
+    dummyradiobus::{DummyRadioBus, DummyRadioBus1080},
+    uartbackedbus::SerialProtocolRadioBus,
+};
 
 fn main() -> Result<(), core::convert::Infallible> {
     env_logger::init();
@@ -32,27 +35,27 @@ fn main() -> Result<(), core::convert::Infallible> {
     let mut window = Window::new("rQuansheng", &output_settings);
 
     let radio_bus =
-        SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(5000)).unwrap();
+        SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(150)).unwrap();
+
+    let radio_bus = DummyRadioBus;
     let mut dummy_delay = host_sw::delay::DummyDelay;
 
     let (tx, rx) = std::sync::mpsc::channel();
 
-    let hosted_platform = host_sw::dummy_platform::HostedPlatform::new(rx);
+    let hosted_platform = host_sw::dummy_platform::HostedPlatform::new(rx, display, &mut window);
 
     let bus_1080 = DummyRadioBus1080;
     let bk1080 = Bk1080::new(bus_1080);
 
     let mut radio = RadioController::new(Bk4819Driver::new(radio_bus), bk1080, hosted_platform);
-    window.update(&display);
 
     'main: loop {
-        radio
-            .render_display(&mut display, Screen::RadioState)
-            .unwrap();
+        radio.render_display(Screen::RadioState).unwrap();
 
         let mut wait = false;
 
-        for event in window.events() {
+        let events = radio.platform.window.events().collect::<Vec<_>>();
+        for event in events {
             if let SimulatorEvent::Quit = event {
                 break 'main;
             }
@@ -62,7 +65,8 @@ fn main() -> Result<(), core::convert::Infallible> {
                 point,
             } = event
             {
-                draw_text_override(&mut display, &format!("{:#?}", point));
+                //draw_text_override(&mut display, &format!("{:#?}", point));
+                log::info!("mouse button down: {:?}", point);
                 wait = true;
             }
 
@@ -72,8 +76,6 @@ fn main() -> Result<(), core::convert::Infallible> {
 
             radio.eat_keyboard_event(&mut dummy_delay);
         }
-
-        window.update(&display);
 
         if wait {
             std::thread::sleep(std::time::Duration::from_millis(1000));

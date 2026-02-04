@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use log::{error, info};
+use log::{error, info, warn};
 use rquansheng::{
     bk_common::BkCommonBus,
     messages::{HostBound, RadioBound, decode_line, encode_line},
@@ -71,13 +71,17 @@ impl BkCommonBus for SerialProtocolRadioBus {
     type Error = io::Error;
 
     fn write_reg_raw(&mut self, reg: u8, value: u16) -> Result<(), Self::Error> {
-        self.send(&RadioBound::WriteBk4819Register(reg, value))?;
+        loop {
+            self.send(&RadioBound::WriteBk4819Register(reg, value))?;
+            std::thread::sleep(std::time::Duration::from_millis(1));
 
-        if let Ok(HostBound::WriteAck(reg, value)) = self.recv_hostbound() {
-            info!("WriteAck: 0x{:x} 0x{:x}", reg, value);
-            return Ok(());
-        } else {
-            error!("no Ready reply");
+            if let Ok(HostBound::WriteAck(reg, value)) = self.recv_hostbound() {
+                info!("WriteAck: 0x{:x} 0x{:x}", reg, value);
+                return Ok(());
+            } else {
+                error!("no Ready reply");
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
 
         Ok(())
@@ -88,13 +92,19 @@ impl BkCommonBus for SerialProtocolRadioBus {
 
         // Be tolerant: ignore unrelated replies (e.g. late Pong).
         for _ in 0..8 {
-            match self.recv_hostbound()? {
-                HostBound::Register(r, v) if r == reg => {
+            match self.recv_hostbound() {
+                Ok(HostBound::Register(r, v)) if r == reg => {
                     return Ok(v);
+                }
+                Err(e) => {
+                    error!("error reading register: {e}");
+                    return Err(e);
                 }
                 _ => continue,
             }
         }
+
+        warn!("no Register reply for reg 0x{reg:02x}");
 
         Err(io::Error::new(
             io::ErrorKind::TimedOut,

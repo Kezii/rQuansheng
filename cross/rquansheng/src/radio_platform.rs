@@ -1,13 +1,20 @@
+use core::convert::Infallible;
+
 use dp30g030_hal::gpio::{Input, Output, Pin, Port};
-use dp32g030::{PORTCON, SYSCON};
+use dp32g030::{PORTCON, SPI0, SYSCON};
+use embedded_graphics::pixelcolor::BinaryColor;
+use embedded_graphics::primitives::Rectangle;
+use embedded_graphics::Pixel;
 use embedded_hal::digital::InputPin;
 
 use crate::board::get_ptt_pin;
 use crate::delay::CycleDelay;
+use crate::display::DisplayMgr;
 use crate::eeprom;
 use crate::keyboard::{KeyEvent, Keyboard, KeyboardState, QuanshengKey};
+use embedded_graphics::prelude::{Dimensions, DrawTarget};
 
-pub trait RadioPlatform {
+pub trait RadioPlatform: DrawTarget<Color = BinaryColor, Error = Infallible> {
     type EepromError;
 
     fn eeprom_read(&mut self, address: u16, data: &mut [u8]) -> Result<(), Self::EepromError>;
@@ -19,6 +26,8 @@ pub trait RadioPlatform {
     fn bk1080_enabled(&mut self, enabled: bool);
 
     fn poll_keyboard(&mut self) -> Option<KeyEvent>;
+
+    fn flush_display(&mut self) -> Result<(), Self::Error>;
 }
 
 pub struct UVK5RadioPlatform {
@@ -29,16 +38,18 @@ pub struct UVK5RadioPlatform {
     pin_ptt: Pin<Input>,
     ptt_debouncer: DebounceBool,
     keyboard_state: KeyboardState,
+    display: DisplayMgr,
 }
 
 impl UVK5RadioPlatform {
-    pub fn new(syscon: &SYSCON, portcon: &PORTCON) -> Self {
+    pub fn new(spi0: SPI0, syscon: &SYSCON, portcon: &PORTCON) -> Self {
         let pin_flashlight = Pin::new(Port::C, 3).into_push_pull_output(syscon, portcon);
         let pin_backlight = Pin::new(Port::B, 6).into_push_pull_output(syscon, portcon);
         let pin_audio_path = Pin::new(Port::C, 4).into_push_pull_output(syscon, portcon);
         let pin_bk1080_enable = Pin::new(Port::B, 15).into_push_pull_output(syscon, portcon);
         let pin_ptt = get_ptt_pin();
         let ptt_debouncer = DebounceBool::new(3);
+        let display = DisplayMgr::new(spi0, syscon, portcon);
         Self {
             pin_flashlight,
             pin_backlight,
@@ -47,7 +58,26 @@ impl UVK5RadioPlatform {
             pin_ptt,
             ptt_debouncer,
             keyboard_state: KeyboardState::default(),
+            display,
         }
+    }
+}
+
+impl DrawTarget for UVK5RadioPlatform {
+    type Color = BinaryColor;
+    type Error = Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        self.display.display.draw_iter(pixels)
+    }
+}
+
+impl Dimensions for UVK5RadioPlatform {
+    fn bounding_box(&self) -> Rectangle {
+        self.display.display.bounding_box()
     }
 }
 
@@ -108,6 +138,11 @@ impl RadioPlatform for UVK5RadioPlatform {
         };
 
         self.keyboard_state.eat_key(key)
+    }
+
+    fn flush_display(&mut self) -> Result<(), Self::Error> {
+        self.display.display.flush().unwrap();
+        Ok(())
     }
 }
 

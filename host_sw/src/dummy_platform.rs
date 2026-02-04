@@ -1,19 +1,36 @@
 use std::sync::mpsc::Receiver;
 
+use embedded_graphics::{
+    Pixel,
+    pixelcolor::BinaryColor,
+    prelude::{Dimensions, DrawTarget, Point, Size},
+    primitives::Rectangle,
+};
+use embedded_graphics_simulator::{SimulatorDisplay, Window};
 use log::info;
 use rquansheng::{keyboard::KeyEvent, radio_platform::RadioPlatform};
 
-pub struct HostedPlatform {
-    receiver: Receiver<KeyEvent>,
+pub struct HostedPlatform<'a> {
+    pub receiver: Receiver<KeyEvent>,
+    pub display: SimulatorDisplay<BinaryColor>,
+    pub window: &'a mut Window,
 }
 
-impl HostedPlatform {
-    pub fn new(receiver: Receiver<KeyEvent>) -> Self {
-        Self { receiver }
+impl<'a> HostedPlatform<'a> {
+    pub fn new(
+        receiver: Receiver<KeyEvent>,
+        display: SimulatorDisplay<BinaryColor>,
+        window: &'a mut Window,
+    ) -> Self {
+        Self {
+            receiver,
+            display,
+            window,
+        }
     }
 }
 
-impl RadioPlatform for HostedPlatform {
+impl<'a> RadioPlatform for HostedPlatform<'a> {
     fn eeprom_read(&mut self, address: u16, data: &mut [u8]) -> Result<(), Self::EepromError> {
         const EEPROM_DUMP: &[u8] = include_bytes!("../../docs/eeprom_dump.bin");
 
@@ -54,5 +71,29 @@ impl RadioPlatform for HostedPlatform {
     fn poll_keyboard(&mut self) -> Option<KeyEvent> {
         info!("poll_keyboard");
         self.receiver.try_recv().ok()
+    }
+
+    fn flush_display(&mut self) -> Result<(), Self::Error> {
+        info!("flush_display");
+        self.window.update(&self.display);
+        Ok(())
+    }
+}
+
+impl<'a> DrawTarget for HostedPlatform<'a> {
+    type Color = BinaryColor;
+    type Error = core::convert::Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = Pixel<Self::Color>>,
+    {
+        self.display.draw_iter(pixels)
+    }
+}
+
+impl<'a> Dimensions for HostedPlatform<'a> {
+    fn bounding_box(&self) -> Rectangle {
+        self.display.bounding_box()
     }
 }
