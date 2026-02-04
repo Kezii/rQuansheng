@@ -54,8 +54,8 @@ rQuansheng can run on a normal PC, controlling the radio chip on a physical devi
 - [x] support high / medium / low power tx (from eeprom calib. tables)
 - [x] support 10 squelch levels (from eeprom calib. tables)
 - [ ] support for CTCSS / DCS etc etc
-- [ ] support AM / SSB / raw etc reception
-- [ ] AM fix or whatever
+- [x] support AM / SSB / raw etc reception
+- [x] AM fix (not tested)
 
 
 ## In the far future, probably never

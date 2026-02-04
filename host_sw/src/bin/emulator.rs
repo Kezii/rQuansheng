@@ -37,7 +37,7 @@ fn main() -> Result<(), core::convert::Infallible> {
     let radio_bus =
         SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(150)).unwrap();
 
-    let radio_bus = DummyRadioBus;
+    //let radio_bus = DummyRadioBus;
     let mut dummy_delay = host_sw::delay::DummyDelay;
 
     let (tx, rx) = std::sync::mpsc::channel();
