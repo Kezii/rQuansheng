@@ -9,6 +9,7 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
+use crate::am_fix::AmFix;
 use crate::bk1080::Bk1080;
 use crate::bk4819::{AfOutSel, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk_common::BkCommonBus;
@@ -306,7 +307,9 @@ where
         }
 
         if let KeyEvent::KeyReleased(QuanshengKey::Ptt) = event {
-            self.bk.play_roger(self.channel_cfg.roger_mode, delay).ok();
+            if self.mode == Mode::Tx {
+                self.bk.play_roger(self.channel_cfg.roger_mode, delay).ok();
+            }
             let _ = self.enter_rx();
         }
 
@@ -332,7 +335,7 @@ where
                 }
                 KeyEvent::KeyPressed(QuanshengKey::Num0) => {
                     self.channel_cfg.modulation = self.channel_cfg.modulation.next();
-                    self.enter_rx().ok();
+                    let _ = self.enter_rx();
                     self.alt_function = false;
                 }
                 _ => {}
@@ -343,6 +346,7 @@ where
             if let Some(frequency) = self.dialer.get_frequency() {
                 self.channel_cfg.freq = frequency * 10;
                 log::info!("dialed frequency: {}", self.channel_cfg.freq);
+                let _ = self.enter_rx();
             }
         }
     }

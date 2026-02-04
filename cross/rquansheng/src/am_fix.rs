@@ -9,7 +9,7 @@ struct AmFixGainEntry {
 /// Minimal port of `uv-k5-firmware-custom/am_fix.c`.
 ///
 /// This is a single-VFO simplification: it tracks one active RX frequency.
-struct AmFix {
+pub struct AmFix {
     enabled: bool,
     gain_table_index: usize,
     prev_rssi: i16,
@@ -211,7 +211,7 @@ impl AmFix {
         },
     ];
 
-    fn set_enabled(&mut self, enabled: bool, freq_hz: u32) {
+    pub fn set_enabled(&mut self, enabled: bool, freq_hz: u32) {
         self.enabled = enabled;
         if enabled {
             self.reset(freq_hz);
@@ -226,7 +226,7 @@ impl AmFix {
         self.current_gain_diff_db = 0;
     }
 
-    fn tick<BUS: BkCommonBus>(
+    pub fn tick<BUS: BkCommonBus>(
         &mut self,
         bk: &mut Bk4819Driver<BUS>,
         freq_hz: u32,
