@@ -5,7 +5,7 @@ use embedded_graphics::{
     pixelcolor::BinaryColor,
     prelude::{Point, Primitive, Size},
     primitives::{PrimitiveStyle, Rectangle, StyledDrawable},
-    text::Text,
+    text::{renderer::CharacterStyle, Text},
     Pixel,
 };
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -127,6 +127,7 @@ impl RenderingMgr {
         rssi: i16,
         dialer: &Dialer<8>,
         mode: Mode,
+        alt_function: bool,
     ) -> Result<(), D::Error> {
         display.clear(BinaryColor::Off)?;
 
@@ -140,6 +141,11 @@ impl RenderingMgr {
         let verysmallfont = MonoTextStyle::new(
             &embedded_graphics::mono_font::ascii::FONT_6X12,
             BinaryColor::On,
+        );
+
+        let mut verysmallfont_inv = MonoTextStyle::new(
+            &embedded_graphics::mono_font::ascii::FONT_6X12,
+            BinaryColor::Off,
         );
 
         let font_10_digits =
@@ -190,6 +196,26 @@ impl RenderingMgr {
             verysmallfont,
         )
         .draw(display)?;
+
+        let mut power_string = String::<6>::new();
+        write!(power_string, "{}", channel_cfg.output_power.to_string()).ok();
+        Rectangle::new(
+            Point::new(44, under_main_frequency_y - 7),
+            Size::new(channel_cfg.output_power.to_string().len() as u32 * 6 + 1, 9),
+        )
+        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+        .draw(display)?;
+
+        Text::new(
+            &power_string,
+            Point::new(45, under_main_frequency_y),
+            verysmallfont_inv,
+        )
+        .draw(display)?;
+
+        if alt_function {
+            Text::new("F", Point::new(1, 7), verysmallfont).draw(display)?;
+        }
 
         let mut rssi_string = String::<6>::new();
         if dialer.is_dialing() {

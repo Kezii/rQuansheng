@@ -51,6 +51,28 @@ pub enum OutputPower {
 }
 
 impl OutputPower {
+    pub fn to_string(self) -> &'static str {
+        match self {
+            OutputPower::Off => "Off",
+            OutputPower::Low => "Low",
+            OutputPower::Mid => "Mid",
+            OutputPower::High => "Hi",
+        }
+    }
+}
+
+impl OutputPower {
+    fn next(&mut self) -> Self {
+        match self {
+            OutputPower::Off => OutputPower::Low,
+            OutputPower::Low => OutputPower::Mid,
+            OutputPower::Mid => OutputPower::High,
+            OutputPower::High => OutputPower::Off,
+        }
+    }
+}
+
+impl OutputPower {
     pub fn to_eeprom_index(self) -> Option<u16> {
         match self {
             OutputPower::Low => Some(0),
@@ -159,6 +181,7 @@ where
     rendering_mgr: RenderingMgr,
     dialer: Dialer<8>,
     should_update_display: bool,
+    alt_function: bool,
 }
 
 impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
@@ -182,6 +205,7 @@ where
             rendering_mgr: RenderingMgr::default(),
             dialer: Dialer::default(),
             should_update_display: false,
+            alt_function: false,
         }
     }
 
@@ -248,14 +272,26 @@ where
             let _ = self.enter_rx();
         }
 
-        if let Some(event) = event {
-            self.dialer.eat_keyboard_event(event);
-            self.should_update_display = true;
+        if let Some(KeyEvent::KeyPressed(QuanshengKey::F)) = event {
+            self.alt_function = !self.alt_function;
         }
 
-        if let Some(frequency) = self.dialer.get_frequency() {
-            self.channel_cfg.freq = frequency * 10;
-            log::info!("dialed frequency: {}", self.channel_cfg.freq);
+        if self.alt_function {
+            if let Some(KeyEvent::KeyPressed(QuanshengKey::Num6)) = event {
+                self.channel_cfg.output_power = self.channel_cfg.output_power.next();
+                self.alt_function = false;
+                self.should_update_display = true;
+            }
+        } else {
+            if let Some(event) = event {
+                self.dialer.eat_keyboard_event(event);
+                self.should_update_display = true;
+            }
+
+            if let Some(frequency) = self.dialer.get_frequency() {
+                self.channel_cfg.freq = frequency * 10;
+                log::info!("dialed frequency: {}", self.channel_cfg.freq);
+            }
         }
     }
 
@@ -276,6 +312,7 @@ where
                     rssi,
                     &self.dialer,
                     self.mode,
+                    self.alt_function,
                 );
             }
             Screen::Splash => {
