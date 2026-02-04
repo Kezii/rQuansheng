@@ -41,6 +41,30 @@ pub enum Modulation {
     RAW,
 }
 
+impl Modulation {
+    pub fn next(&self) -> Self {
+        match self {
+            Modulation::FM => Modulation::AM,
+            Modulation::AM => Modulation::USB,
+            Modulation::USB => Modulation::BYP,
+            Modulation::BYP => Modulation::RAW,
+            Modulation::RAW => Modulation::FM,
+        }
+    }
+
+    #[inline]
+    pub fn af_out_sel(self) -> AfOutSel {
+        // Port of the C mapping in `RADIO_SetModulation()`.
+        match self {
+            Modulation::FM => AfOutSel::Normal,
+            Modulation::AM => AfOutSel::Am,
+            Modulation::USB => AfOutSel::Baseband2,
+            Modulation::BYP => AfOutSel::Unknown3,
+            Modulation::RAW => AfOutSel::Baseband1,
+        }
+    }
+}
+
 #[repr(i8)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum OutputPower {
@@ -62,7 +86,7 @@ impl OutputPower {
 }
 
 impl OutputPower {
-    fn next(&mut self) -> Self {
+    fn next(&self) -> Self {
         match self {
             OutputPower::Off => OutputPower::Low,
             OutputPower::Low => OutputPower::Mid,
@@ -182,6 +206,8 @@ where
     dialer: Dialer<8>,
     should_update_display: bool,
     alt_function: bool,
+    backlight_on: bool,
+    am_fix: AmFix,
 }
 
 impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
@@ -206,6 +232,8 @@ where
             dialer: Dialer::default(),
             should_update_display: false,
             alt_function: false,
+            backlight_on: true,
+            am_fix: AmFix::default(),
         }
     }
 
@@ -263,30 +291,54 @@ where
     pub fn eat_keyboard_event<D: DelayNs>(&mut self, delay: &mut D) {
         let event = self.platform.poll_keyboard();
 
-        if let Some(KeyEvent::KeyPressed(QuanshengKey::Ptt)) = event {
+        let event = match event {
+            Some(event) => {
+                self.should_update_display = true;
+                event
+            }
+            None => {
+                return;
+            }
+        };
+
+        if let KeyEvent::KeyPressed(QuanshengKey::Ptt) = event {
             let _ = self.enter_tx(delay);
         }
 
-        if let Some(KeyEvent::KeyReleased(QuanshengKey::Ptt)) = event {
+        if let KeyEvent::KeyReleased(QuanshengKey::Ptt) = event {
             self.bk.play_roger(self.channel_cfg.roger_mode, delay).ok();
             let _ = self.enter_rx();
         }
 
-        if let Some(KeyEvent::KeyPressed(QuanshengKey::F)) = event {
-            self.alt_function = !self.alt_function;
+        if let KeyEvent::KeyPressed(key) = event {
+            match key {
+                QuanshengKey::F => {
+                    self.alt_function = !self.alt_function;
+                }
+                QuanshengKey::Side1 => {
+                    self.platform.set_backlight(!self.backlight_on);
+                    self.backlight_on = !self.backlight_on;
+                }
+
+                _ => {}
+            }
         }
 
         if self.alt_function {
-            if let Some(KeyEvent::KeyPressed(QuanshengKey::Num6)) = event {
-                self.channel_cfg.output_power = self.channel_cfg.output_power.next();
-                self.alt_function = false;
-                self.should_update_display = true;
+            match event {
+                KeyEvent::KeyPressed(QuanshengKey::Num6) => {
+                    self.channel_cfg.output_power = self.channel_cfg.output_power.next();
+                    self.alt_function = false;
+                }
+                KeyEvent::KeyPressed(QuanshengKey::Num0) => {
+                    self.channel_cfg.modulation = self.channel_cfg.modulation.next();
+                    self.enter_rx().ok();
+                    self.alt_function = false;
+                }
+                _ => {}
             }
         } else {
-            if let Some(event) = event {
-                self.dialer.eat_keyboard_event(event);
-                self.should_update_display = true;
-            }
+            self.dialer.eat_keyboard_event(event);
 
             if let Some(frequency) = self.dialer.get_frequency() {
                 self.channel_cfg.freq = frequency * 10;
@@ -349,16 +401,42 @@ where
         self.bk
             .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
 
+        // --- Modulation / AFC / IF coeff / AGC ----------------------------------
+        //
+        // Port of `RADIO_SetModulation()` plus the AM-fix behavior from `RADIO_SetupAGC()`.
+        // We program the "static" registers up-front, and the actual AF output selection
+        // will be switched between Mute and the desired demod output by squelch events.
+        self.bk.set_af_dac_gain(0xF)?;
+        self.bk
+            .set_if_coeff(if self.channel_cfg.modulation == Modulation::USB {
+                0
+            } else {
+                0x2AAB
+            })?;
+        self.bk
+            .set_afc_disable(self.channel_cfg.modulation != Modulation::FM)?;
+
+        if self.channel_cfg.modulation == Modulation::AM {
+            // Always enable the AM fix in this Rust port (no EEPROM/menu yet).
+            self.am_fix.set_enabled(true, self.channel_cfg.freq);
+
+            // Match the C AM-fix path: lock AGC so the fixer can control gain.
+            // Also keep the AGC tables in their "FM" baseline state.
+            self.bk.init_agc(false)?;
+            self.bk.set_agc(false)?;
+        } else {
+            self.am_fix.set_enabled(false, self.channel_cfg.freq);
+            self.bk
+                .init_agc(self.channel_cfg.modulation == Modulation::AM)?;
+            self.bk.set_agc(true)?;
+        }
+
         let thresholds = self.get_squelch_threshold_from_eeprom().unwrap();
         self.bk.setup_squelch(thresholds)?;
 
         self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, true)?;
 
         self.bk.enable_squelch_interrupts()?;
-
-        self.bk
-            .init_agc(self.channel_cfg.modulation == Modulation::AM)?;
-        self.bk.set_agc(true)?;
 
         // Start muted; tick task will unmute on squelch-open event.
         let _ = self.bk.set_af(AfOutSel::Mute);
@@ -368,6 +446,10 @@ where
 
     /// Enter TX mode (port of the C sequencing used in `RADIO_SetTxParameters()`).
     pub fn enter_tx<D: DelayNs>(&mut self, delay: &mut D) -> Result<(), BUS::Error> {
+        if self.channel_cfg.modulation != Modulation::FM {
+            return Ok(());
+        }
+
         self.mode = Mode::Tx;
         self.squelch_open = false;
 
@@ -534,13 +616,18 @@ where
             if interrupts.squelch_lost() {
                 self.squelch_open = true;
                 self.bk.toggle_gpio_out(GpioPin::Gpio6Green, true)?;
-                self.bk.set_af(AfOutSel::Normal)?;
+                self.bk.set_af(self.channel_cfg.modulation.af_out_sel())?;
             }
             if interrupts.squelch_found() {
                 self.squelch_open = false;
                 self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
                 self.bk.set_af(AfOutSel::Mute)?;
             }
+        }
+
+        // AM fix needs a periodic tick while listening AM (reference firmware does this at 10ms).
+        if self.channel_cfg.modulation == Modulation::AM {
+            self.am_fix.tick(&mut self.bk, self.channel_cfg.freq)?;
         }
 
         Ok(())

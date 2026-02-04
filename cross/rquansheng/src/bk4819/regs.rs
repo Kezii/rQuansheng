@@ -1143,6 +1143,7 @@ pub struct Reg3C {
 }
 
 /// REG_3D: IF selection coefficient.
+#[address(0x3D)]
 #[bitfield(u16)]
 pub struct Reg3D {
     /// IF selection coefficient (see datasheet mapping).
@@ -1677,6 +1678,7 @@ pub struct Reg72 {
 }
 
 /// REG_73: Automatic Frequency Correction (AFC) settings.
+#[address(0x73)]
 #[bitfield(u16)]
 pub struct Reg73 {
     #[bits(4)]

@@ -762,6 +762,31 @@ where
         )
     }
 
+    /// Set only the AF DAC gain (REG_48[3:0]) preserving current AF RX gains.
+    pub fn set_af_dac_gain(&mut self, dac_gain: u8) -> Result<(), BUS::Error> {
+        let r48 = self.bitbang.read_reg::<Reg48>()?;
+        self.bitbang.write_reg(r48.with_af_dac_gain(dac_gain))
+    }
+
+    /// Write IF selection coefficient (REG_3D) as raw value.
+    pub fn set_if_coeff(&mut self, coeff: u16) -> Result<(), BUS::Error> {
+        // Use a typed write preserving the exact raw value.
+        self.bitbang.write_reg(Reg3D::from(coeff))
+    }
+
+    /// Enable/disable AFC (REG_73[?] `afc_disable`) by raw access.
+    pub fn set_afc_disable(&mut self, disable: bool) -> Result<(), BUS::Error> {
+        let r73 = self.bitbang.read_reg::<Reg73>()?;
+        self.bitbang.write_reg(r73.with_afc_disable(disable))
+    }
+
+    /// Write REG_13 directly (used by AM-fix logic).
+    #[inline]
+    pub fn write_reg13_raw(&mut self, value: u16) -> Result<(), BUS::Error> {
+        // Use a typed write preserving the exact raw value.
+        self.bitbang.write_reg(Reg13::from(value))
+    }
+
     // --- Roger --------------------------------------------------------------
 
     pub fn play_roger<D: DelayNs>(

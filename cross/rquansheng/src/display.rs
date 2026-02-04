@@ -102,7 +102,8 @@ impl DisplayMgr {
         let disp_spidevice = ExclusiveDevice::new_no_delay(spi0, pin_lcd_cs).unwrap();
         let disp_interface = SPIInterface::new(disp_spidevice, pin_lcd_a0);
 
-        let page_buffer = PAGE_BUFFER.init(GraphicsPageBuffer::new());
+        let page_buffer: &mut GraphicsPageBuffer<128, 8> =
+            PAGE_BUFFER.init(GraphicsPageBuffer::new());
         let mut display: Display =
             ST7565::new(disp_interface, FG12864390_FKFW).into_graphics_mode(page_buffer);
 
@@ -133,8 +134,8 @@ impl RenderingMgr {
 
         // layout elements
 
-        let main_frequency_y = 35;
-        let under_main_frequency_y = 43;
+        let main_frequency_y = 34;
+        let under_main_frequency_y = 44;
 
         use core::fmt::Write;
 
@@ -143,7 +144,7 @@ impl RenderingMgr {
             BinaryColor::On,
         );
 
-        let mut verysmallfont_inv = MonoTextStyle::new(
+        let verysmallfont_inv = MonoTextStyle::new(
             &embedded_graphics::mono_font::ascii::FONT_6X12,
             BinaryColor::Off,
         );
@@ -213,6 +214,15 @@ impl RenderingMgr {
         )
         .draw(display)?;
 
+        let mut modulation_string = String::<6>::new();
+        write!(modulation_string, "{:?}", channel_cfg.modulation).ok();
+        Text::new(
+            &modulation_string,
+            Point::new(68, under_main_frequency_y),
+            verysmallfont,
+        )
+        .draw(display)?;
+
         if alt_function {
             Text::new("F", Point::new(1, 7), verysmallfont).draw(display)?;
         }
@@ -227,7 +237,7 @@ impl RenderingMgr {
         }
         Text::new(
             &rssi_string,
-            Point::new(75, under_main_frequency_y),
+            Point::new(90, under_main_frequency_y),
             verysmallfont,
         )
         .draw(display)?;
