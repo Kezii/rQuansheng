@@ -74,6 +74,20 @@ impl FrequencyBand {
             Self::BandNone => 0,
         }
     }
+
+    /// Per-band RSSI dBm correction (ported from the reference firmware).
+    pub const fn rssi_dbm_correction(self) -> i16 {
+        match self {
+            Self::Band1_50MHz => -15,
+            Self::Band2_108MHz => -25,
+            Self::Band3_137MHz => -20,
+            Self::Band4_174MHz => -4,
+            Self::Band5_350MHz => -7,
+            Self::Band6_400MHz => -6,
+            Self::Band7_470MHz => -1,
+            Self::BandNone => 0,
+        }
+    }
 }
 
 /// Port of the C firmware `FREQUENCY_CalculateOutputPower(...)`.

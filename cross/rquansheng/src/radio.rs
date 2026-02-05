@@ -5,8 +5,6 @@
 //! - Provide a higher-level "radio controller" that manages RX/TX state transitions and
 //!   periodic interrupt polling (as in the reference C firmware).
 
-use embedded_graphics::pixelcolor::BinaryColor;
-use embedded_graphics::prelude::DrawTarget;
 use embedded_hal::delay::DelayNs;
 
 use crate::am_fix::AmFix;
@@ -53,7 +51,6 @@ impl Modulation {
         }
     }
 
-    #[inline]
     pub fn af_out_sel(self) -> AfOutSel {
         // Port of the C mapping in `RADIO_SetModulation()`.
         match self {
@@ -121,6 +118,12 @@ pub enum SquelchLevel {
     Squelch7,
     Squelch8,
     Squelch9,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub struct SLevelConfig {
+    pub s0_level: i16,
+    pub s9_level: i16,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -202,6 +205,7 @@ where
     pub channel_cfg: ChannelConfig,
     mode: Mode,
     squelch_open: bool,
+    force_squelch_open: bool,
     audio_on: bool,
     rendering_mgr: RenderingMgr,
     dialer: Dialer<8>,
@@ -228,6 +232,7 @@ where
             channel_cfg: ChannelConfig::default(),
             mode: Mode::Rx,
             squelch_open: false,
+            force_squelch_open: false,
             audio_on: false,
             rendering_mgr: RenderingMgr::default(),
             dialer: Dialer::default(),
@@ -238,19 +243,28 @@ where
         }
     }
 
-    #[inline]
-    pub fn bk_mut(&mut self) -> &mut Bk4819Driver<BUS> {
-        &mut self.bk
+    fn open_squelch(&mut self) -> Result<(), BUS::Error> {
+        if self.squelch_open {
+            return Ok(());
+        }
+
+        self.squelch_open = true;
+        self.bk.toggle_gpio_out(GpioPin::Gpio6Green, true)?;
+        self.bk.set_af(self.channel_cfg.modulation.af_out_sel())?;
+
+        Ok(())
     }
 
-    #[inline]
-    pub fn mode(&self) -> Mode {
-        self.mode
-    }
+    fn close_squelch(&mut self) -> Result<(), BUS::Error> {
+        if !self.squelch_open {
+            return Ok(());
+        }
 
-    #[inline]
-    pub fn squelch_open(&self) -> bool {
-        self.squelch_open
+        self.squelch_open = false;
+        self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
+        self.bk.set_af(AfOutSel::Mute)?;
+
+        Ok(())
     }
 
     /// Desired audio path state for the board (speaker/amp).
@@ -322,8 +336,21 @@ where
                     self.platform.set_backlight(!self.backlight_on);
                     self.backlight_on = !self.backlight_on;
                 }
+                QuanshengKey::Side2 => {
+                    if self.mode == Mode::Rx {
+                        self.force_squelch_open = true;
+                        self.open_squelch().ok();
+                    }
+                }
 
                 _ => {}
+            }
+        }
+
+        if let KeyEvent::KeyReleased(QuanshengKey::Side2) = event {
+            if self.force_squelch_open && self.mode == Mode::Rx {
+                self.force_squelch_open = false;
+                self.close_squelch().ok();
             }
         }
 
@@ -359,6 +386,9 @@ where
 
     pub fn render_display(&mut self, screen: Screen) -> Result<(), BUS::Error> {
         let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+        let rssi = rssi.saturating_add(band.rssi_dbm_correction());
+        let s_levels = self.read_s_levels_from_eeprom();
 
         match screen {
             Screen::RadioState => {
@@ -366,9 +396,11 @@ where
                     &mut self.platform,
                     self.channel_cfg,
                     rssi,
+                    s_levels,
                     &self.dialer,
                     self.mode,
                     self.alt_function,
+                    self.squelch_open,
                 );
             }
             Screen::Splash => {
@@ -381,10 +413,30 @@ where
         Ok(())
     }
 
+    fn read_s_levels_from_eeprom(&mut self) -> SLevelConfig {
+        let mut data = [0u8; 8];
+        if self.platform.eeprom_read(0x0EA0, &mut data).is_ok() {
+            let s0 = data[1] as i16;
+            let s9 = data[2] as i16;
+            if s0 < 200 && s0 > 90 && s0 < 160 && s9 > 50 && s9 < s0 - 9 {
+                return SLevelConfig {
+                    s0_level: s0,
+                    s9_level: s9,
+                };
+            }
+        }
+
+        SLevelConfig {
+            s0_level: 130,
+            s9_level: 76,
+        }
+    }
+
     /// Enter RX mode (minimal port of the C sequencing used in `RADIO_SetupRegisters()`).
     pub fn enter_rx(&mut self) -> Result<(), BUS::Error> {
         self.mode = Mode::Rx;
         self.squelch_open = false;
+        self.force_squelch_open = false;
 
         self.platform.set_audio_path(false);
 
@@ -456,6 +508,7 @@ where
 
         self.mode = Mode::Tx;
         self.squelch_open = false;
+        self.force_squelch_open = false;
 
         self.platform.set_audio_path(false);
 
@@ -616,16 +669,16 @@ where
 
             let interrupts = self.bk.get_interrupts()?;
 
-            // the interrupts are documented the other way around ??
-            if interrupts.squelch_lost() {
-                self.squelch_open = true;
-                self.bk.toggle_gpio_out(GpioPin::Gpio6Green, true)?;
-                self.bk.set_af(self.channel_cfg.modulation.af_out_sel())?;
-            }
-            if interrupts.squelch_found() {
-                self.squelch_open = false;
-                self.bk.toggle_gpio_out(GpioPin::Gpio6Green, false)?;
-                self.bk.set_af(AfOutSel::Mute)?;
+            if self.force_squelch_open {
+                self.open_squelch()?;
+            } else {
+                // the interrupts are documented the other way around ??
+                if interrupts.squelch_lost() {
+                    self.open_squelch()?;
+                }
+                if interrupts.squelch_found() {
+                    self.close_squelch()?;
+                }
             }
         }
 

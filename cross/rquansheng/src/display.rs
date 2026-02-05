@@ -4,8 +4,8 @@ use embedded_graphics::{
     mono_font::MonoTextStyle,
     pixelcolor::BinaryColor,
     prelude::{Point, Primitive, Size},
-    primitives::{PrimitiveStyle, Rectangle, StyledDrawable},
-    text::{renderer::CharacterStyle, Text},
+    primitives::{PrimitiveStyle, Rectangle},
+    text::Text,
     Pixel,
 };
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -19,7 +19,7 @@ use static_cell::StaticCell;
 use crate::{
     delay::CycleDelay,
     dialer::Dialer,
-    radio::{ChannelConfig, Mode},
+    radio::{ChannelConfig, Mode, SLevelConfig},
 };
 use dp30g030_hal::{
     self,
@@ -125,17 +125,20 @@ impl RenderingMgr {
         &mut self,
         display: &mut D,
         channel_cfg: ChannelConfig,
-        rssi: i16,
+        rssi_dbm: i16,
+        s_levels: SLevelConfig,
         dialer: &Dialer<8>,
         mode: Mode,
         alt_function: bool,
+        squelch_open: bool,
     ) -> Result<(), D::Error> {
         display.clear(BinaryColor::Off)?;
 
         // layout elements
 
         let main_frequency_y = 34;
-        let under_main_frequency_y = 44;
+        let line_1_y = 44;
+        let line_2_y = 54;
 
         use core::fmt::Write;
 
@@ -174,15 +177,15 @@ impl RenderingMgr {
             } else {
                 ""
             };
-            Text::new(f6, Point::new(10, main_frequency_y), font_24_digits).draw(display)?;
+            Text::new(f6, Point::new(7, main_frequency_y), font_24_digits).draw(display)?;
             Text::new(
                 l2,
-                Point::new(10 + 6 * 16, main_frequency_y - 1),
+                Point::new(7 + 6 * 16, main_frequency_y - 1),
                 font_14_digits,
             )
             .draw(display)?;
             Rectangle::new(
-                Point::new(3 * 16 + 8, main_frequency_y - 2),
+                Point::new(3 * 16 + 5, main_frequency_y - 2),
                 Size::new(2, 2),
             )
             .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
@@ -191,56 +194,50 @@ impl RenderingMgr {
 
         let mut bandwidth_string = String::<6>::new();
         write!(bandwidth_string, "{:?}", channel_cfg.bandwidth).ok();
-        Text::new(
-            &bandwidth_string,
-            Point::new(16, under_main_frequency_y),
-            verysmallfont,
-        )
-        .draw(display)?;
+        Text::new(&bandwidth_string, Point::new(8, line_1_y), verysmallfont).draw(display)?;
 
         let mut power_string = String::<6>::new();
         write!(power_string, "{}", channel_cfg.output_power.to_string()).ok();
         Rectangle::new(
-            Point::new(44, under_main_frequency_y - 7),
+            Point::new(36, line_1_y - 7),
             Size::new(channel_cfg.output_power.to_string().len() as u32 * 6 + 1, 9),
         )
         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
         .draw(display)?;
 
-        Text::new(
-            &power_string,
-            Point::new(45, under_main_frequency_y),
-            verysmallfont_inv,
-        )
-        .draw(display)?;
+        Text::new(&power_string, Point::new(37, line_1_y), verysmallfont_inv).draw(display)?;
 
         let mut modulation_string = String::<6>::new();
         write!(modulation_string, "{:?}", channel_cfg.modulation).ok();
-        Text::new(
-            &modulation_string,
-            Point::new(68, under_main_frequency_y),
-            verysmallfont,
-        )
-        .draw(display)?;
+        Text::new(&modulation_string, Point::new(60, line_1_y), verysmallfont).draw(display)?;
 
         if alt_function {
             Text::new("F", Point::new(1, 7), verysmallfont).draw(display)?;
         }
 
-        let mut rssi_string = String::<6>::new();
-        if dialer.is_dialing() {
-            write!(rssi_string, "DIAL").ok();
-        } else if mode == Mode::Tx {
-            write!(rssi_string, " TX").ok();
-        } else {
-            write!(rssi_string, "{}", rssi).ok();
+        if !squelch_open {
+            let mut rssi_string = String::<6>::new();
+            if dialer.is_dialing() {
+                write!(rssi_string, "DIAL").ok();
+            } else if mode == Mode::Tx {
+                write!(rssi_string, " TX").ok();
+            } else {
+                write!(rssi_string, "{}", rssi_dbm).ok();
+            }
+            Text::new(&rssi_string, Point::new(100, line_1_y), verysmallfont).draw(display)?;
         }
-        Text::new(
-            &rssi_string,
-            Point::new(90, under_main_frequency_y),
-            verysmallfont,
-        )
-        .draw(display)?;
+
+        let mut s_level_string = String::<6>::new();
+
+        let s_level = compute_s_level(rssi_dbm, s_levels);
+        let over_s9_dbm = compute_over_s9_dbm(rssi_dbm, s_levels);
+        if over_s9_dbm >= 10 {
+            write!(s_level_string, "S9+{}", over_s9_dbm).ok();
+        } else {
+            write!(s_level_string, "S{}", s_level).ok();
+        }
+
+        Text::new(&s_level_string, Point::new(80, line_1_y), verysmallfont).draw(display)?;
 
         {
             let battery = 100; // stub
@@ -250,7 +247,7 @@ impl RenderingMgr {
             Text::new(&battery_string, Point::new(100, 8), font_10_digits).draw(display)?;
         }
 
-        self.historical_rssi.push(((rssi + 100) / 8) as u8);
+        self.historical_rssi.push(((rssi_dbm + 100) / 8) as u8);
 
         for i in 0..128 {
             if let Some(rssi) = self.historical_rssi.get(i) {
@@ -287,6 +284,21 @@ impl RenderingMgr {
 
         Ok(())
     }
+}
+
+fn compute_s_level(rssi_dbm: i16, s_levels: SLevelConfig) -> i16 {
+    let s0_dbm = -s_levels.s0_level;
+    let s0_9 = s_levels.s0_level - s_levels.s9_level;
+    if s0_9 <= 0 {
+        return 0;
+    }
+    let scaled = ((rssi_dbm - s0_dbm) as i32 * 9) / s0_9 as i32;
+    scaled.clamp(0, 9) as i16
+}
+
+fn compute_over_s9_dbm(rssi_dbm: i16, s_levels: SLevelConfig) -> i16 {
+    let over = rssi_dbm + s_levels.s9_level;
+    over.clamp(0, 99)
 }
 
 /// Scrive `value` in formato decimale fisso, senza `format!`/`core::fmt`.
