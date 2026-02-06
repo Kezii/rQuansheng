@@ -200,16 +200,16 @@ where
             slevel.over_s9_dbm,
         ) {
             // if we are dialing, show "DIAL"
-            (false, true, _, _) => FlexText::from_dbg("DIAL"),
+            (false, true, _, _) => FlexText::from("DIAL"),
             // if we are in TX mode, show "TX"
-            (false, false, Mode::Tx, _) => FlexText::from_dbg("TX"),
+            (false, false, Mode::Tx, _) => FlexText::from("TX"),
             // if we are in RX small signal, show the Slevel and the RSSI
             (_, false, _, ..=9) => {
                 FlexText::write(|s| write!(s, "S{} {}", slevel.s_level, slevel.rssi))
             }
             // with bign signal shor S9+
             (_, false, _, 10..) => FlexText::write(|s| write!(s, "S9+{}", slevel.over_s9_dbm)),
-            _ => FlexText::from_dbg(""),
+            _ => FlexText::from(""),
         };
 
         let line = [
@@ -244,14 +244,8 @@ where
                 .draw(&mut self.platform)?;
         }
 
-        self.historical_rssi.push(((slevel.rssi + 100) / 8) as u8);
-
-        for i in 0..128 {
-            if let Some(rssi) = self.historical_rssi.get(i) {
-                let pixel = Pixel(Point::new(i as i32, 63 - *rssi as i32), BinaryColor::On);
-                self.platform.draw_iter(core::iter::once(pixel))?;
-            }
-        }
+        self.vu_meter
+            .update_and_draw(&mut self.platform, slevel.rssi, self.s_levels)?;
 
         Ok(())
     }
@@ -371,48 +365,151 @@ pub fn write_float_simple_prec<const N: usize>(
     }
 }
 
-pub struct CircularBuffer<T, const N: usize> {
-    buffer: [T; N],
-    head: usize,
-    tail: usize,
+pub struct VuMeter {
+    peak_rssi_dbm: i16,
+    decay_tick: u8,
 }
 
-impl<T: Default, const N: usize> Default for CircularBuffer<T, N> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+impl VuMeter {
+    const BAR_X: i32 = 0;
+    const BAR_Y: i32 = 58;
+    const BAR_WIDTH: i32 = 128;
+    const BAR_HEIGHT: u32 = 6;
+    const MAX_OVER_S9_DBM: i16 = 30;
+    const PEAK_DECAY_TICKS: u8 = 4;
 
-impl<T: Default, const N: usize> CircularBuffer<T, N> {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
-            buffer: core::array::from_fn(|_| T::default()),
-            head: 0,
-            tail: 0,
+            peak_rssi_dbm: i16::MIN,
+            decay_tick: 0,
         }
     }
 
-    pub fn push(&mut self, value: T) {
-        self.buffer[self.head] = value;
-        self.head = (self.head + 1) % N;
-        if self.head == self.tail {
-            self.tail = (self.tail + 1) % N;
+    pub fn update_and_draw<D: DrawTarget<Color = BinaryColor>>(
+        &mut self,
+        display: &mut D,
+        rssi_dbm: i16,
+        s_levels: SLevelConfig,
+    ) -> Result<(), D::Error> {
+        self.update_peak(rssi_dbm);
+
+        Rectangle::new(
+            Point::new(Self::BAR_X, Self::BAR_Y),
+            Size::new(Self::BAR_WIDTH as u32, Self::BAR_HEIGHT),
+        )
+        .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
+        .draw(display)?;
+
+        let current_width = self.rssi_to_width(rssi_dbm, s_levels);
+        if current_width > 0 {
+            Rectangle::new(
+                Point::new(Self::BAR_X, Self::BAR_Y),
+                Size::new(current_width as u32, Self::BAR_HEIGHT),
+            )
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(display)?;
+        }
+
+        self.draw_ticks(display, s_levels, current_width)?;
+        self.draw_peak(display, s_levels, current_width)?;
+
+        Ok(())
+    }
+
+    fn update_peak(&mut self, rssi_dbm: i16) {
+        if self.peak_rssi_dbm == i16::MIN || rssi_dbm > self.peak_rssi_dbm {
+            self.peak_rssi_dbm = rssi_dbm;
+            self.decay_tick = 0;
+            return;
+        }
+
+        if self.peak_rssi_dbm > rssi_dbm {
+            self.decay_tick = self.decay_tick.saturating_add(1);
+            if self.decay_tick >= Self::PEAK_DECAY_TICKS {
+                self.peak_rssi_dbm = self.peak_rssi_dbm.saturating_sub(1);
+                self.decay_tick = 0;
+            }
         }
     }
 
-    pub fn get(&self, index: usize) -> Option<&T> {
-        if index >= N {
-            return None;
+    fn draw_ticks<D: DrawTarget<Color = BinaryColor>>(
+        &self,
+        display: &mut D,
+        s_levels: SLevelConfig,
+        current_width: i32,
+    ) -> Result<(), D::Error> {
+        let tick_height = 3u32;
+        let tick_y = Self::BAR_Y + Self::BAR_HEIGHT as i32 - tick_height as i32;
+        let s0_9 = s_levels.s0_level - s_levels.s9_level;
+        if s0_9 <= 0 {
+            return Ok(());
         }
-        let offset = (self.head + index) % N;
-        Some(&self.buffer[offset])
+        let s0_dbm = -s_levels.s0_level;
+
+        for s in 1..=9 {
+            let rssi_dbm = s0_dbm + (s0_9 * s) / 9;
+            let x = self
+                .rssi_to_width(rssi_dbm, s_levels)
+                .min(Self::BAR_WIDTH - 1);
+            let color = if x < current_width {
+                BinaryColor::Off
+            } else {
+                BinaryColor::On
+            };
+            Rectangle::new(
+                Point::new(Self::BAR_X + x, tick_y),
+                Size::new(1, tick_height),
+            )
+            .into_styled(PrimitiveStyle::with_stroke(color, 1))
+            .draw(display)?;
+        }
+
+        Ok(())
     }
 
-    pub fn len(&self) -> usize {
-        N
+    fn draw_peak<D: DrawTarget<Color = BinaryColor>>(
+        &self,
+        display: &mut D,
+        s_levels: SLevelConfig,
+        current_width: i32,
+    ) -> Result<(), D::Error> {
+        if self.peak_rssi_dbm == i16::MIN {
+            return Ok(());
+        }
+        let x = self
+            .rssi_to_width(self.peak_rssi_dbm, s_levels)
+            .min(Self::BAR_WIDTH - 1);
+        let color = if x < current_width {
+            BinaryColor::Off
+        } else {
+            BinaryColor::On
+        };
+        Rectangle::new(
+            Point::new(Self::BAR_X + x, Self::BAR_Y),
+            Size::new(2, Self::BAR_HEIGHT),
+        )
+        .into_styled(PrimitiveStyle::with_fill(color))
+        .draw(display)?;
+        Rectangle::new(
+            Point::new(Self::BAR_X + x.saturating_sub(1), Self::BAR_Y - 1),
+            Size::new(4, 1),
+        )
+        .into_styled(PrimitiveStyle::with_fill(color))
+        .draw(display)?;
+
+        Ok(())
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.head == self.tail
+    fn rssi_to_width(&self, rssi_dbm: i16, s_levels: SLevelConfig) -> i32 {
+        let s0_dbm = -s_levels.s0_level;
+        let s9_dbm = -s_levels.s9_level;
+        let max_dbm = s9_dbm.saturating_add(Self::MAX_OVER_S9_DBM);
+        let span = (max_dbm - s0_dbm) as i32;
+        if span <= 0 {
+            return 0;
+        }
+
+        let scaled = ((rssi_dbm - s0_dbm) as i32 * Self::BAR_WIDTH) / span;
+        scaled.clamp(0, Self::BAR_WIDTH)
     }
 }

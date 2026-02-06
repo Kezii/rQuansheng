@@ -12,7 +12,7 @@ use crate::bk1080::Bk1080;
 use crate::bk4819::{AfOutSel, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk_common::BkCommonBus;
 use crate::dialer::Dialer;
-use crate::display::CircularBuffer;
+use crate::display::VuMeter;
 use crate::frequencies::{calculate_output_power_setting, FrequencyBand};
 use crate::keyboard::{KeyEvent, QuanshengKey};
 use crate::radio_platform::RadioPlatform;
@@ -120,7 +120,7 @@ pub enum SquelchLevel {
     Squelch9,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct SLevelConfig {
     pub s0_level: i16,
     pub s9_level: i16,
@@ -218,7 +218,9 @@ where
     pub alt_function: bool,
     pub backlight_on: bool,
     pub am_fix: AmFix,
-    pub historical_rssi: CircularBuffer<u8, 128>,
+    pub vu_meter: VuMeter,
+    /// this is just a cache for eeprom values
+    pub s_levels: SLevelConfig,
 }
 
 impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
@@ -231,7 +233,7 @@ where
         platform.set_audio_path(false);
         platform.set_backlight(true);
 
-        let radio = Self {
+        let mut radio = Self {
             bk,
             bk1080,
             platform,
@@ -245,8 +247,11 @@ where
             alt_function: false,
             backlight_on: true,
             am_fix: AmFix::default(),
-            historical_rssi: CircularBuffer::new(),
+            vu_meter: VuMeter::new(),
+            s_levels: SLevelConfig::default(),
         };
+
+        radio.s_levels = radio.read_s_levels_from_eeprom();
 
         radio
     }
@@ -421,7 +426,7 @@ where
 
         let rssi_dbm = self.get_corrected_rssi();
 
-        let s_levels = self.read_s_levels_from_eeprom();
+        let s_levels = self.s_levels;
 
         let s0_dbm = -s_levels.s0_level;
         let s0_9 = s_levels.s0_level - s_levels.s9_level;
