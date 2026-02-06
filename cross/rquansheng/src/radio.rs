@@ -139,7 +139,7 @@ pub struct SquelchThresholds {
 #[derive(Copy, Clone, Debug)]
 pub struct ChannelConfig {
     /// RX/TX frequency in Hz
-    pub freq: u32,
+    pub frequency_hz: u32,
     pub bandwidth: FilterBandwidth,
     /// PA bias (board/calibration dependent). Use conservative values by default.
     pub tx_bias: u8,
@@ -157,12 +157,16 @@ pub struct ChannelConfig {
     pub output_power: OutputPower,
 
     pub squelch_level: SquelchLevel,
+
+    pub frequency_step_hz: u32,
+
+    pub frequency_offset_hz: i32,
 }
 
 impl Default for ChannelConfig {
     fn default() -> Self {
         Self {
-            freq: 433_000_000, // 433.00000 MHz
+            frequency_hz: 433_000_000, // 433.00000 MHz
             bandwidth: FilterBandwidth::Wide,
             tx_bias: 20,
             mic_gain: 16, // ~8.0 dB (matches the reference firmware's mid preset)
@@ -171,6 +175,8 @@ impl Default for ChannelConfig {
             modulation: Modulation::FM,
             output_power: OutputPower::Off,
             squelch_level: SquelchLevel::Squelch1,
+            frequency_step_hz: 2500,
+            frequency_offset_hz: 0,
         }
     }
 }
@@ -230,7 +236,6 @@ where
     PLATFORM: RadioPlatform,
 {
     pub fn new(bk: Bk4819Driver<BUS>, bk1080: Bk1080<BUS1080>, mut platform: PLATFORM) -> Self {
-        platform.set_audio_path(false);
         platform.set_backlight(true);
 
         let mut radio = Self {
@@ -351,19 +356,25 @@ where
                 }
                 QuanshengKey::Side2 => {
                     if self.mode == Mode::Rx {
-                        self.force_squelch_open = true;
-                        self.open_squelch().ok();
+                        self.force_squelch_open = !self.force_squelch_open;
+                        if self.force_squelch_open {
+                            self.open_squelch().ok();
+                        } else {
+                            self.close_squelch().ok();
+                        }
                     }
                 }
 
-                _ => {}
-            }
-        }
+                QuanshengKey::Up => {
+                    self.channel_cfg.frequency_hz += self.channel_cfg.frequency_step_hz;
+                    let _ = self.enter_rx();
+                }
+                QuanshengKey::Down => {
+                    self.channel_cfg.frequency_hz -= self.channel_cfg.frequency_step_hz;
+                    let _ = self.enter_rx();
+                }
 
-        if let KeyEvent::KeyReleased(QuanshengKey::Side2) = event {
-            if self.force_squelch_open && self.mode == Mode::Rx {
-                self.force_squelch_open = false;
-                self.close_squelch().ok();
+                _ => {}
             }
         }
 
@@ -384,8 +395,8 @@ where
             self.dialer.eat_keyboard_event(event);
 
             if let Some(frequency) = self.dialer.get_frequency() {
-                self.channel_cfg.freq = frequency * 10;
-                log::info!("dialed frequency: {}", self.channel_cfg.freq);
+                self.channel_cfg.frequency_hz = frequency * 10;
+                log::info!("dialed frequency: {}", self.channel_cfg.frequency_hz);
                 let _ = self.enter_rx();
             }
         }
@@ -414,7 +425,7 @@ where
 
     pub fn get_corrected_rssi(&mut self) -> i16 {
         let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
-        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.frequency_hz);
         rssi.saturating_add(band.rssi_dbm_correction())
     }
 
@@ -468,13 +479,20 @@ where
         }
     }
 
+    pub fn update_vfo(&mut self) -> Result<(), BUS::Error> {
+        self.bk.set_frequency(self.channel_cfg.frequency_hz)?;
+
+        // this is necessary for tx too
+        self.bk
+            .pick_rx_filter_path_based_on_frequency(self.channel_cfg.frequency_hz)?;
+
+        Ok(())
+    }
+
     /// Enter RX mode (minimal port of the C sequencing used in `RADIO_SetupRegisters()`).
     pub fn enter_rx(&mut self) -> Result<(), BUS::Error> {
         self.mode = Mode::Rx;
         self.squelch_open = false;
-        self.force_squelch_open = false;
-
-        self.platform.set_audio_path(false);
 
         self.bk
             .set_filter_bandwidth(self.channel_cfg.bandwidth, true)?;
@@ -489,9 +507,7 @@ where
 
         self.bk.set_mic_gain(self.channel_cfg.mic_gain)?;
 
-        self.bk.set_frequency(self.channel_cfg.freq)?;
-        self.bk
-            .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
+        self.update_vfo()?;
 
         // --- Modulation / AFC / IF coeff / AGC ----------------------------------
         //
@@ -510,14 +526,15 @@ where
 
         if self.channel_cfg.modulation == Modulation::AM {
             // Always enable the AM fix in this Rust port (no EEPROM/menu yet).
-            self.am_fix.set_enabled(true, self.channel_cfg.freq);
+            self.am_fix.set_enabled(true, self.channel_cfg.frequency_hz);
 
             // Match the C AM-fix path: lock AGC so the fixer can control gain.
             // Also keep the AGC tables in their "FM" baseline state.
             self.bk.init_agc(false)?;
             self.bk.set_agc(false)?;
         } else {
-            self.am_fix.set_enabled(false, self.channel_cfg.freq);
+            self.am_fix
+                .set_enabled(false, self.channel_cfg.frequency_hz);
             self.bk
                 .init_agc(self.channel_cfg.modulation == Modulation::AM)?;
             self.bk.set_agc(true)?;
@@ -533,6 +550,10 @@ where
         // Start muted; tick task will unmute on squelch-open event.
         let _ = self.bk.set_af(AfOutSel::Mute);
 
+        if self.force_squelch_open {
+            self.open_squelch().ok();
+        }
+
         Ok(())
     }
 
@@ -546,13 +567,11 @@ where
         self.squelch_open = false;
         self.force_squelch_open = false;
 
-        self.platform.set_audio_path(false);
-
         self.bk.toggle_gpio_out(GpioPin::Gpio0RxEnable, false)?;
 
         self.bk
             .set_filter_bandwidth(self.channel_cfg.bandwidth, true)?;
-        self.bk.set_frequency(self.channel_cfg.freq)?;
+        self.update_vfo()?;
 
         self.bk.set_mic_gain(self.channel_cfg.mic_gain)?;
 
@@ -562,16 +581,13 @@ where
 
         delay.delay_ms(10);
 
-        self.bk
-            .pick_rx_filter_path_based_on_frequency(self.channel_cfg.freq)?;
-
         self.bk.toggle_gpio_out(GpioPin::Gpio1PaEnable, true)?;
 
         delay.delay_ms(5);
 
         let bias_settings = self.get_bias()?;
         self.bk
-            .setup_power_amplifier(bias_settings, self.channel_cfg.freq)?;
+            .setup_power_amplifier(bias_settings, self.channel_cfg.frequency_hz)?;
 
         delay.delay_ms(10);
 
@@ -598,7 +614,7 @@ where
         // - EEPROM_ReadBuffer(0x1ED0 + (Band * 16) + (OUTPUT_POWER * 3), Txp, 3)
         // - TXP_CalculatedSetting = FREQUENCY_CalculateOutputPower(...)
 
-        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.frequency_hz);
 
         let mut txp = [0u8; 3];
 
@@ -628,7 +644,7 @@ where
             lower,
             middle,
             upper,
-            self.channel_cfg.freq,
+            self.channel_cfg.frequency_hz,
         );
 
         Ok(setting)
@@ -636,7 +652,7 @@ where
 
     #[allow(dead_code, clippy::identity_op)]
     pub fn get_squelch_threshold_from_eeprom(&mut self) -> Option<SquelchThresholds> {
-        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.frequency_hz);
         // Port of `RADIO_ConfigureSquelchAndOutputPower()`
 
         let squelch_level: u16 = self.channel_cfg.squelch_level as u16;
@@ -720,7 +736,8 @@ where
 
         // AM fix needs a periodic tick while listening AM (reference firmware does this at 10ms).
         if self.channel_cfg.modulation == Modulation::AM {
-            self.am_fix.tick(&mut self.bk, self.channel_cfg.freq)?;
+            self.am_fix
+                .tick(&mut self.bk, self.channel_cfg.frequency_hz)?;
         }
 
         Ok(())

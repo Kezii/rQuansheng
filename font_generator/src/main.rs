@@ -98,7 +98,7 @@ const JOBS: &[FontJob] = &[
     },
     FontJob {
         font_const: "PROFONT_10_POINT",
-        mapping_data: "0123456789%+-AGCMF",
+        mapping_data: "0123456789%+-AGCMFk.",
         source_font: &profont::PROFONT_10_POINT,
     },
 ];

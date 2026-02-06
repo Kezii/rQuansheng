@@ -158,7 +158,7 @@ where
             if self.dialer.is_dialing() {
                 main_frequency = self.dialer.get_as_string();
             } else {
-                write!(main_frequency, "{}", self.channel_cfg.freq / 10).ok();
+                write!(main_frequency, "{}", self.channel_cfg.frequency_hz / 10).ok();
             }
             let split = main_frequency.as_str().split_at_checked(6);
             let f6 = if let Some((first, _)) = split {
@@ -220,6 +220,29 @@ where
         ];
 
         UiTextLineLayout::new(line_1_y, FontSizes::VerySmall, &line).draw(&mut self.platform)?;
+
+        let line = [
+            FlexText::write(|s| {
+                write!(
+                    s,
+                    "{}.{}k",
+                    self.channel_cfg.frequency_step_hz / 1000,
+                    self.channel_cfg.frequency_step_hz % 1000 / 10
+                )
+            })
+            .with_rel_offset(8),
+            FlexText::write(|s| {
+                write!(
+                    s,
+                    "{}.{}k",
+                    self.channel_cfg.frequency_offset_hz / 1000,
+                    self.channel_cfg.frequency_offset_hz % 1000 / 10
+                )
+            })
+            .with_abs_offset(80),
+        ];
+        UiTextLineLayout::new(line_2_y, FontSizes::VerySmallNumbers, &line)
+            .draw(&mut self.platform)?;
 
         // header row
         {
