@@ -12,7 +12,7 @@ use crate::bk1080::Bk1080;
 use crate::bk4819::{AfOutSel, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk_common::BkCommonBus;
 use crate::dialer::Dialer;
-use crate::display::RenderingMgr;
+use crate::display::CircularBuffer;
 use crate::frequencies::{calculate_output_power_setting, FrequencyBand};
 use crate::keyboard::{KeyEvent, QuanshengKey};
 use crate::radio_platform::RadioPlatform;
@@ -195,24 +195,24 @@ pub enum Screen {
 
 pub struct RadioController<BUS, BUS1080, PLATFORM>
 where
-    BUS: BkCommonBus,
-    BUS1080: BkCommonBus,
-    PLATFORM: RadioPlatform,
+    BUS: BkCommonBus + 'static,
+    BUS1080: BkCommonBus + 'static,
+    PLATFORM: RadioPlatform + 'static,
 {
     pub bk: Bk4819Driver<BUS>,
     pub bk1080: Bk1080<BUS1080>,
     pub platform: PLATFORM,
     pub channel_cfg: ChannelConfig,
-    mode: Mode,
-    squelch_open: bool,
-    force_squelch_open: bool,
-    audio_on: bool,
-    rendering_mgr: RenderingMgr,
-    dialer: Dialer<8>,
-    should_update_display: bool,
-    alt_function: bool,
-    backlight_on: bool,
-    am_fix: AmFix,
+    pub mode: Mode,
+    pub squelch_open: bool,
+    pub force_squelch_open: bool,
+    pub audio_on: bool,
+    pub dialer: Dialer<8>,
+    pub should_update_display: bool,
+    pub alt_function: bool,
+    pub backlight_on: bool,
+    pub am_fix: AmFix,
+    pub historical_rssi: CircularBuffer<u8, 128>,
 }
 
 impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
@@ -225,7 +225,7 @@ where
         platform.set_audio_path(false);
         platform.set_backlight(true);
 
-        Self {
+        let radio = Self {
             bk,
             bk1080,
             platform,
@@ -234,13 +234,15 @@ where
             squelch_open: false,
             force_squelch_open: false,
             audio_on: false,
-            rendering_mgr: RenderingMgr::default(),
             dialer: Dialer::default(),
             should_update_display: false,
             alt_function: false,
             backlight_on: true,
             am_fix: AmFix::default(),
-        }
+            historical_rssi: CircularBuffer::new(),
+        };
+
+        radio
     }
 
     fn open_squelch(&mut self) -> Result<(), BUS::Error> {
@@ -385,23 +387,9 @@ where
     }
 
     pub fn render_display(&mut self, screen: Screen) -> Result<(), BUS::Error> {
-        let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
-        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
-        let rssi = rssi.saturating_add(band.rssi_dbm_correction());
-        let s_levels = self.read_s_levels_from_eeprom();
-
         match screen {
             Screen::RadioState => {
-                let _ = self.rendering_mgr.render_main(
-                    &mut self.platform,
-                    self.channel_cfg,
-                    rssi,
-                    s_levels,
-                    &self.dialer,
-                    self.mode,
-                    self.alt_function,
-                    self.squelch_open,
-                );
+                let _ = self.render_main();
             }
             Screen::Splash => {
                 //let _ = self.rendering_mgr.render_splash(display, &[]);
@@ -413,7 +401,7 @@ where
         Ok(())
     }
 
-    fn read_s_levels_from_eeprom(&mut self) -> SLevelConfig {
+    pub fn read_s_levels_from_eeprom(&mut self) -> SLevelConfig {
         let mut data = [0u8; 8];
         if self.platform.eeprom_read(0x0EA0, &mut data).is_ok() {
             let s0 = data[1] as i16;

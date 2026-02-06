@@ -42,7 +42,9 @@ fn main() -> Result<(), core::convert::Infallible> {
 
     let (tx, rx) = std::sync::mpsc::channel();
 
-    let hosted_platform = host_sw::dummy_platform::HostedPlatform::new(rx, display, &mut window);
+    let hosted_platform = host_sw::dummy_platform::HostedPlatform::new(rx, display, unsafe {
+        std::mem::transmute(&mut window)
+    });
 
     let bus_1080 = DummyRadioBus1080;
     let bk1080 = Bk1080::new(bus_1080);

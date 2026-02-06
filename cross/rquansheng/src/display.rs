@@ -17,9 +17,12 @@ use st7565::{
 use static_cell::StaticCell;
 
 use crate::{
+    bk_common::BkCommonBus,
     delay::CycleDelay,
     dialer::Dialer,
-    radio::{ChannelConfig, Mode, SLevelConfig},
+    frequencies::FrequencyBand,
+    radio::{ChannelConfig, Mode, RadioController, SLevelConfig},
+    radio_platform::RadioPlatform,
 };
 use dp30g030_hal::{
     self,
@@ -115,24 +118,14 @@ impl DisplayMgr {
     }
 }
 
-#[derive(Default)]
-pub struct RenderingMgr {
-    historical_rssi: CircularBuffer<u8, 128>,
-}
-
-impl RenderingMgr {
-    pub fn render_main<D: DrawTarget<Color = BinaryColor>>(
-        &mut self,
-        display: &mut D,
-        channel_cfg: ChannelConfig,
-        rssi_dbm: i16,
-        s_levels: SLevelConfig,
-        dialer: &Dialer<8>,
-        mode: Mode,
-        alt_function: bool,
-        squelch_open: bool,
-    ) -> Result<(), D::Error> {
-        display.clear(BinaryColor::Off)?;
+impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
+where
+    BUS: BkCommonBus,
+    BUS1080: BkCommonBus,
+    PLATFORM: RadioPlatform,
+{
+    pub fn render_main(&mut self) -> Result<(), PLATFORM::Error> {
+        self.platform.clear(BinaryColor::Off)?;
 
         // layout elements
 
@@ -161,10 +154,10 @@ impl RenderingMgr {
 
         {
             let mut main_frequency = String::<8>::new();
-            if dialer.is_dialing() {
-                main_frequency = dialer.get_as_string();
+            if self.dialer.is_dialing() {
+                main_frequency = self.dialer.get_as_string();
             } else {
-                write!(main_frequency, "{}", channel_cfg.freq / 10).ok();
+                write!(main_frequency, "{}", self.channel_cfg.freq / 10).ok();
             }
             let split = main_frequency.as_str().split_at_checked(6);
             let f6 = if let Some((first, _)) = split {
@@ -177,82 +170,102 @@ impl RenderingMgr {
             } else {
                 ""
             };
-            Text::new(f6, Point::new(7, main_frequency_y), font_24_digits).draw(display)?;
+            Text::new(f6, Point::new(7, main_frequency_y), font_24_digits)
+                .draw(&mut self.platform)?;
             Text::new(
                 l2,
                 Point::new(7 + 6 * 16, main_frequency_y - 1),
                 font_14_digits,
             )
-            .draw(display)?;
+            .draw(&mut self.platform)?;
             Rectangle::new(
                 Point::new(3 * 16 + 5, main_frequency_y - 2),
                 Size::new(2, 2),
             )
             .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 1))
-            .draw(display)?;
+            .draw(&mut self.platform)?;
         }
 
         let mut bandwidth_string = String::<6>::new();
-        write!(bandwidth_string, "{:?}", channel_cfg.bandwidth).ok();
-        Text::new(&bandwidth_string, Point::new(8, line_1_y), verysmallfont).draw(display)?;
+        write!(bandwidth_string, "{:?}", self.channel_cfg.bandwidth).ok();
+        Text::new(&bandwidth_string, Point::new(8, line_1_y), verysmallfont)
+            .draw(&mut self.platform)?;
 
         let mut power_string = String::<6>::new();
-        write!(power_string, "{}", channel_cfg.output_power.to_string()).ok();
+        write!(
+            power_string,
+            "{}",
+            self.channel_cfg.output_power.to_string()
+        )
+        .ok();
         Rectangle::new(
             Point::new(36, line_1_y - 7),
-            Size::new(channel_cfg.output_power.to_string().len() as u32 * 6 + 1, 9),
+            Size::new(
+                self.channel_cfg.output_power.to_string().len() as u32 * 6 + 1,
+                9,
+            ),
         )
         .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-        .draw(display)?;
+        .draw(&mut self.platform)?;
 
-        Text::new(&power_string, Point::new(37, line_1_y), verysmallfont_inv).draw(display)?;
+        Text::new(&power_string, Point::new(37, line_1_y), verysmallfont_inv)
+            .draw(&mut self.platform)?;
 
         let mut modulation_string = String::<6>::new();
-        write!(modulation_string, "{:?}", channel_cfg.modulation).ok();
-        Text::new(&modulation_string, Point::new(60, line_1_y), verysmallfont).draw(display)?;
+        write!(modulation_string, "{:?}", self.channel_cfg.modulation).ok();
+        Text::new(&modulation_string, Point::new(60, line_1_y), verysmallfont)
+            .draw(&mut self.platform)?;
 
-        if alt_function {
-            Text::new("F", Point::new(1, 7), verysmallfont).draw(display)?;
+        if self.alt_function {
+            Text::new("F", Point::new(1, 7), verysmallfont).draw(&mut self.platform)?;
         }
 
-        if !squelch_open {
+        if !self.squelch_open {
             let mut rssi_string = String::<6>::new();
-            if dialer.is_dialing() {
+            if self.dialer.is_dialing() {
                 write!(rssi_string, "DIAL").ok();
-            } else if mode == Mode::Tx {
+            } else if self.mode == Mode::Tx {
                 write!(rssi_string, " TX").ok();
             } else {
-                write!(rssi_string, "{}", rssi_dbm).ok();
+                write!(rssi_string, "{}", self.bk.get_rssi_dbm().unwrap_or(0)).ok();
             }
-            Text::new(&rssi_string, Point::new(100, line_1_y), verysmallfont).draw(display)?;
+            Text::new(&rssi_string, Point::new(100, line_1_y), verysmallfont)
+                .draw(&mut self.platform)?;
         }
 
         let mut s_level_string = String::<6>::new();
 
-        let s_level = compute_s_level(rssi_dbm, s_levels);
-        let over_s9_dbm = compute_over_s9_dbm(rssi_dbm, s_levels);
+        let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+        let rssi = rssi.saturating_add(band.rssi_dbm_correction());
+        let s_levels = self.read_s_levels_from_eeprom();
+
+        let s_level = compute_s_level(rssi, s_levels);
+        let over_s9_dbm = compute_over_s9_dbm(rssi, s_levels);
         if over_s9_dbm >= 10 {
             write!(s_level_string, "S9+{}", over_s9_dbm).ok();
         } else {
             write!(s_level_string, "S{}", s_level).ok();
         }
 
-        Text::new(&s_level_string, Point::new(80, line_1_y), verysmallfont).draw(display)?;
+        Text::new(&s_level_string, Point::new(80, line_1_y), verysmallfont)
+            .draw(&mut self.platform)?;
 
         {
             let battery = 100; // stub
 
             let mut battery_string = String::<6>::new();
             write!(battery_string, "{}%", battery).ok();
-            Text::new(&battery_string, Point::new(100, 8), font_10_digits).draw(display)?;
+            Text::new(&battery_string, Point::new(100, 8), font_10_digits)
+                .draw(&mut self.platform)?;
         }
 
-        self.historical_rssi.push(((rssi_dbm + 100) / 8) as u8);
+        self.historical_rssi.push(((rssi + 100) / 8) as u8);
 
         for i in 0..128 {
             if let Some(rssi) = self.historical_rssi.get(i) {
                 let pixel = Pixel(Point::new(i as i32, 63 - *rssi as i32), BinaryColor::On);
-                display.draw_iter(core::iter::once(pixel))?;
+                self.platform.draw_iter(core::iter::once(pixel))?;
             }
         }
 
