@@ -193,6 +193,12 @@ pub enum Screen {
     Splash,
 }
 
+pub struct Slevel {
+    pub rssi: i16,
+    pub s_level: i16,
+    pub over_s9_dbm: i16,
+}
+
 pub struct RadioController<BUS, BUS1080, PLATFORM>
 where
     BUS: BkCommonBus + 'static,
@@ -399,6 +405,43 @@ where
         self.platform.flush_display().unwrap();
 
         Ok(())
+    }
+
+    pub fn get_corrected_rssi(&mut self) -> i16 {
+        let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
+        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
+        rssi.saturating_add(band.rssi_dbm_correction())
+    }
+
+    pub fn get_s_level(&mut self) -> Slevel {
+        fn compute_over_s9_dbm(rssi_dbm: i16, s_levels: SLevelConfig) -> i16 {
+            let over = rssi_dbm + s_levels.s9_level;
+            over.clamp(0, 99)
+        }
+
+        let rssi_dbm = self.get_corrected_rssi();
+
+        let s_levels = self.read_s_levels_from_eeprom();
+
+        let s0_dbm = -s_levels.s0_level;
+        let s0_9 = s_levels.s0_level - s_levels.s9_level;
+        if s0_9 <= 0 {
+            return Slevel {
+                rssi: rssi_dbm,
+                s_level: 0,
+                over_s9_dbm: 0,
+            };
+        }
+        let scaled = ((rssi_dbm - s0_dbm) as i32 * 9) / s0_9 as i32;
+        let s_scaled = scaled.clamp(0, 9) as i16;
+
+        let over_s9_dbm = compute_over_s9_dbm(rssi_dbm, s_levels);
+
+        Slevel {
+            rssi: rssi_dbm,
+            s_level: s_scaled,
+            over_s9_dbm,
+        }
     }
 
     pub fn read_s_levels_from_eeprom(&mut self) -> SLevelConfig {

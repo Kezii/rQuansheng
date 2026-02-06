@@ -23,6 +23,7 @@ use crate::{
     frequencies::FrequencyBand,
     radio::{ChannelConfig, Mode, RadioController, SLevelConfig},
     radio_platform::RadioPlatform,
+    ui::{FontSizes, UiLineLayout, UiWidget, UiWidgetType},
 };
 use dp30g030_hal::{
     self,
@@ -186,81 +187,70 @@ where
             .draw(&mut self.platform)?;
         }
 
-        let mut bandwidth_string = String::<6>::new();
-        write!(bandwidth_string, "{:?}", self.channel_cfg.bandwidth).ok();
-        Text::new(&bandwidth_string, Point::new(8, line_1_y), verysmallfont)
-            .draw(&mut self.platform)?;
-
-        let mut power_string = String::<6>::new();
-        write!(
-            power_string,
-            "{}",
-            self.channel_cfg.output_power.to_string()
-        )
-        .ok();
-        Rectangle::new(
-            Point::new(36, line_1_y - 7),
-            Size::new(
-                self.channel_cfg.output_power.to_string().len() as u32 * 6 + 1,
-                9,
-            ),
-        )
-        .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
-        .draw(&mut self.platform)?;
-
-        Text::new(&power_string, Point::new(37, line_1_y), verysmallfont_inv)
-            .draw(&mut self.platform)?;
-
-        let mut modulation_string = String::<6>::new();
-        write!(modulation_string, "{:?}", self.channel_cfg.modulation).ok();
-        Text::new(&modulation_string, Point::new(60, line_1_y), verysmallfont)
-            .draw(&mut self.platform)?;
-
         if self.alt_function {
             Text::new("F", Point::new(1, 7), verysmallfont).draw(&mut self.platform)?;
         }
 
-        if !self.squelch_open {
-            let mut rssi_string = String::<6>::new();
-            if self.dialer.is_dialing() {
-                write!(rssi_string, "DIAL").ok();
-            } else if self.mode == Mode::Tx {
-                write!(rssi_string, " TX").ok();
-            } else {
-                write!(rssi_string, "{}", self.bk.get_rssi_dbm().unwrap_or(0)).ok();
+        let slevel = self.get_s_level();
+
+        let slevel_widget = match (
+            self.squelch_open,
+            self.dialer.is_dialing(),
+            self.mode,
+            slevel.over_s9_dbm,
+        ) {
+            // if we are dialing, show "DIAL"
+            (false, true, _, _) => UiWidgetType::write(FontSizes::VerySmall, |s| write!(s, "DIAL")),
+            // if we are in TX mode, show "TX"
+            (false, false, Mode::Tx, _) => {
+                UiWidgetType::write(FontSizes::VerySmall, |s| write!(s, "TX"))
             }
-            Text::new(&rssi_string, Point::new(100, line_1_y), verysmallfont)
-                .draw(&mut self.platform)?;
-        }
+            // if we are in RX small signal, show the Slevel and the RSSI
+            (_, false, _, over) if over < 10 => UiWidgetType::write(FontSizes::VerySmall, |s| {
+                write!(s, "S{} {}", slevel.s_level, slevel.rssi)
+            }),
+            // with bign signal shor S9+
+            (_, false, _, over) if over >= 10 => UiWidgetType::write(FontSizes::VerySmall, |s| {
+                write!(s, "S9+{}", slevel.over_s9_dbm)
+            }),
+            _ => UiWidgetType::Nothing,
+        };
 
-        let mut s_level_string = String::<6>::new();
+        let line = [
+            (
+                8,
+                UiWidgetType::write(FontSizes::VerySmall, |s| {
+                    write!(s, "{:?}", self.channel_cfg.bandwidth)
+                }),
+            ),
+            (
+                29,
+                UiWidgetType::write(FontSizes::VerySmall, |s| {
+                    write!(s, "{}", self.channel_cfg.output_power.to_string())
+                }),
+            ),
+            (
+                23,
+                UiWidgetType::write(FontSizes::VerySmall, |s| {
+                    write!(s, "{:?}", self.channel_cfg.modulation)
+                }),
+            ),
+            (23, slevel_widget),
+        ];
 
-        let rssi = self.bk.get_rssi_dbm().unwrap_or(0);
-        let band = FrequencyBand::from_frequency_hz(self.channel_cfg.freq);
-        let rssi = rssi.saturating_add(band.rssi_dbm_correction());
-        let s_levels = self.read_s_levels_from_eeprom();
-
-        let s_level = compute_s_level(rssi, s_levels);
-        let over_s9_dbm = compute_over_s9_dbm(rssi, s_levels);
-        if over_s9_dbm >= 10 {
-            write!(s_level_string, "S9+{}", over_s9_dbm).ok();
-        } else {
-            write!(s_level_string, "S{}", s_level).ok();
-        }
-
-        Text::new(&s_level_string, Point::new(80, line_1_y), verysmallfont)
-            .draw(&mut self.platform)?;
+        UiLineLayout::new(line_1_y, &line).draw(&mut self.platform)?;
 
         {
             let battery = 100; // stub
 
-            let mut battery_string = String::<6>::new();
-            write!(battery_string, "{}%", battery).ok();
-            Text::new(&battery_string, Point::new(100, 8), font_10_digits)
-                .draw(&mut self.platform)?;
+            UiWidget::new(
+                Point::new(100, 8),
+                UiWidgetType::write(FontSizes::VerySmallNumbers, |s| write!(s, "{}%", battery)),
+            )
+            .draw(&mut self.platform)?;
         }
 
-        self.historical_rssi.push(((rssi + 100) / 8) as u8);
+        self.historical_rssi.push(((slevel.rssi + 100) / 8) as u8);
 
         for i in 0..128 {
             if let Some(rssi) = self.historical_rssi.get(i) {
@@ -297,21 +287,6 @@ where
 
         Ok(())
     }
-}
-
-fn compute_s_level(rssi_dbm: i16, s_levels: SLevelConfig) -> i16 {
-    let s0_dbm = -s_levels.s0_level;
-    let s0_9 = s_levels.s0_level - s_levels.s9_level;
-    if s0_9 <= 0 {
-        return 0;
-    }
-    let scaled = ((rssi_dbm - s0_dbm) as i32 * 9) / s0_9 as i32;
-    scaled.clamp(0, 9) as i16
-}
-
-fn compute_over_s9_dbm(rssi_dbm: i16, s_levels: SLevelConfig) -> i16 {
-    let over = rssi_dbm + s_levels.s9_level;
-    over.clamp(0, 99)
 }
 
 /// Scrive `value` in formato decimale fisso, senza `format!`/`core::fmt`.
