@@ -21,9 +21,9 @@ use crate::{
     delay::CycleDelay,
     dialer::Dialer,
     frequencies::FrequencyBand,
-    radio::{ChannelConfig, Mode, RadioController, SLevelConfig},
+    radio::{ChannelConfig, Mode, Modulation, RadioController, SLevelConfig},
     radio_platform::RadioPlatform,
-    ui::{FontSizes, UiLineLayout, UiWidget, UiWidgetType},
+    ui::{FlexText, FontSizes, UiTextLineLayout, UiWidget, UiWidgetType},
 };
 use dp30g030_hal::{
     self,
@@ -200,54 +200,48 @@ where
             slevel.over_s9_dbm,
         ) {
             // if we are dialing, show "DIAL"
-            (false, true, _, _) => UiWidgetType::write(FontSizes::VerySmall, |s| write!(s, "DIAL")),
+            (false, true, _, _) => FlexText::from_dbg("DIAL"),
             // if we are in TX mode, show "TX"
-            (false, false, Mode::Tx, _) => {
-                UiWidgetType::write(FontSizes::VerySmall, |s| write!(s, "TX"))
-            }
+            (false, false, Mode::Tx, _) => FlexText::from_dbg("TX"),
             // if we are in RX small signal, show the Slevel and the RSSI
-            (_, false, _, over) if over < 10 => UiWidgetType::write(FontSizes::VerySmall, |s| {
-                write!(s, "S{} {}", slevel.s_level, slevel.rssi)
-            }),
+            (_, false, _, ..=9) => {
+                FlexText::write(|s| write!(s, "S{} {}", slevel.s_level, slevel.rssi))
+            }
             // with bign signal shor S9+
-            (_, false, _, over) if over >= 10 => UiWidgetType::write(FontSizes::VerySmall, |s| {
-                write!(s, "S9+{}", slevel.over_s9_dbm)
-            }),
-            _ => UiWidgetType::Nothing,
+            (_, false, _, 10..) => FlexText::write(|s| write!(s, "S9+{}", slevel.over_s9_dbm)),
+            _ => FlexText::from_dbg(""),
         };
 
         let line = [
-            (
-                8,
-                UiWidgetType::write(FontSizes::VerySmall, |s| {
-                    write!(s, "{:?}", self.channel_cfg.bandwidth)
-                }),
-            ),
-            (
-                29,
-                UiWidgetType::write(FontSizes::VerySmall, |s| {
-                    write!(s, "{}", self.channel_cfg.output_power.to_string())
-                }),
-            ),
-            (
-                23,
-                UiWidgetType::write(FontSizes::VerySmall, |s| {
-                    write!(s, "{:?}", self.channel_cfg.modulation)
-                }),
-            ),
-            (23, slevel_widget),
+            FlexText::from_dbg(self.channel_cfg.bandwidth).with_rel_offset(8),
+            FlexText::from(self.channel_cfg.output_power.to_string()).with_rel_offset(29),
+            FlexText::from_dbg(self.channel_cfg.modulation).with_rel_offset(23),
+            slevel_widget.with_rel_offset(23),
         ];
 
-        UiLineLayout::new(line_1_y, &line).draw(&mut self.platform)?;
+        UiTextLineLayout::new(line_1_y, FontSizes::VerySmall, &line).draw(&mut self.platform)?;
 
+        // header row
         {
             let battery = 100; // stub
+            let gains = self.bk.get_gain().unwrap_or_default();
 
-            UiWidget::new(
-                Point::new(100, 8),
-                UiWidgetType::write(FontSizes::VerySmallNumbers, |s| write!(s, "{}%", battery)),
-            )
-            .draw(&mut self.platform)?;
+            let line = [
+                FlexText::write(|s| write!(s, "AGC{}", gains.agc_index))
+                    .with_rel_offset(10)
+                    .with_visible(
+                        gains.agc_enabled && self.channel_cfg.modulation != Modulation::AM,
+                    ),
+                FlexText::write(|s| write!(s, "AMF{}", self.am_fix.gain_table_index))
+                    .with_rel_offset(10)
+                    .with_visible(self.channel_cfg.modulation == Modulation::AM),
+                FlexText::write(|s| write!(s, "{}", gains.agc_sig_strength)).with_rel_offset(40),
+                FlexText::from_dbg(gains.current.total_db()).with_rel_offset(20),
+                FlexText::write(|s| write!(s, "{}%", battery)).with_abs_offset(100),
+            ];
+
+            UiTextLineLayout::new(8, FontSizes::VerySmallNumbers, &line)
+                .draw(&mut self.platform)?;
         }
 
         self.historical_rssi.push(((slevel.rssi + 100) / 8) as u8);

@@ -177,7 +177,7 @@ impl Reg10LnaGainShort {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct Gains {
     pub lna_short: i8,
     pub lna: i8,
@@ -230,6 +230,10 @@ impl Gains {
             mixer: reg14.mixer_gain().to_db(),
             pga: reg14.pga_gain().to_db(),
         }
+    }
+
+    pub fn total_db(self) -> i16 {
+        self.lna_short as i16 + self.lna as i16 + self.mixer as i16 + self.pga as i16
     }
 }
 
@@ -1773,10 +1777,10 @@ pub struct Reg7E {
     #[bits(3)]
     pub dcf_bw_tx: u8,
     #[bits(6)]
-    undocumented: u8,
+    pub undocumented: i8,
     /// AGC Fix Index. 011=max ... 100=min.
     #[bits(3)]
-    pub agc_fix_index: u8,
+    pub agc_fix_index: i8,
     /// AGC Fix Mode. 1=Fix;0=Auto.
     pub agc_fix_mode: bool,
 }

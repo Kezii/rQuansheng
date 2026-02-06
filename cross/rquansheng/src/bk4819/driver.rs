@@ -46,6 +46,19 @@ pub enum RogerMode {
     Roger,
 }
 
+/// Snapshot of the current AGC/gain state as reported by the chip.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub struct GainSnapshot {
+    /// True when AGC is in auto mode (REG_7E fix mode = 0).
+    pub agc_enabled: bool,
+    /// AGC gain index as stored in REG_7E bits [14:12] (0..=7).
+    pub agc_index: i8,
+    /// Instantaneous AGC signal strength from REG_7E bits [11:5] (0..=127).
+    pub agc_sig_strength: i8,
+    /// Effective gain entry currently selected by AGC (decoded to dB).
+    pub current: Gains,
+}
+
 /// High-level driver, owning a `Bk4819` instance plus a small amount of state
 /// that was global in the C implementation (GPIO out shadow + rx idle flag).
 pub struct Bk4819Driver<BUS> {
@@ -719,6 +732,33 @@ where
         };
 
         Some(gains)
+    }
+
+    pub fn get_gain(&mut self) -> Result<GainSnapshot, BUS::Error> {
+        let reg7e = self.bitbang.read_reg::<Reg7E>()?;
+
+        let agc_sig_strength = reg7e.undocumented(); //((reg7e_raw >> 5) & 0x7f) as u8;
+
+        let table = [
+            Gains::from_reg10(self.bitbang.read_reg::<Reg10>()?),
+            Gains::from_reg11(self.bitbang.read_reg::<Reg11>()?),
+            Gains::from_reg12(self.bitbang.read_reg::<Reg12>()?),
+            Gains::from_reg13(self.bitbang.read_reg::<Reg13>()?),
+            Gains::from_reg14(self.bitbang.read_reg::<Reg14>()?),
+        ];
+
+        let current = match reg7e.agc_fix_index() {
+            -4..=-1 => table[4],
+            0..=3 => table[reg7e.agc_fix_index() as usize],
+            _ => table[4],
+        };
+
+        Ok(GainSnapshot {
+            agc_enabled: !reg7e.agc_fix_mode(),
+            agc_index: reg7e.agc_fix_index(),
+            agc_sig_strength,
+            current,
+        })
     }
 
     pub fn disable(&mut self) -> Result<(), BUS::Error> {

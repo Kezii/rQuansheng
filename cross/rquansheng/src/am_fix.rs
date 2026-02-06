@@ -11,7 +11,7 @@ struct AmFixGainEntry {
 /// This is a single-VFO simplification: it tracks one active RX frequency.
 pub struct AmFix {
     enabled: bool,
-    gain_table_index: usize,
+    pub gain_table_index: usize,
     prev_rssi: i16,
     hold_counter_10ms: u8,
     last_freq_hz: u32,
