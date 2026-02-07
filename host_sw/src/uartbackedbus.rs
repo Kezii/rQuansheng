@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use rquansheng::{
     bk_common::BkCommonBus,
     messages::{HostBound, RadioBound, decode_line, encode_line},
@@ -49,7 +49,7 @@ impl SerialProtocolRadioBus {
     }
 
     pub fn send(&mut self, msg: &RadioBound) -> io::Result<()> {
-        info!("send: {:?}", msg);
+        debug!("send: {:?}", msg);
         let encoded = encode_line(msg)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         self.port.write_all(&encoded)?;
@@ -62,7 +62,7 @@ impl SerialProtocolRadioBus {
         let decoded = decode_line::<HostBound>(&line)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()));
 
-        info!("recv: {:?}", decoded);
+        debug!("recv: {:?}", decoded);
         decoded
     }
 }
@@ -76,7 +76,7 @@ impl BkCommonBus for SerialProtocolRadioBus {
             std::thread::sleep(std::time::Duration::from_millis(1));
 
             if let Ok(HostBound::WriteAck(reg, value)) = self.recv_hostbound() {
-                info!("WriteAck: 0x{:x} 0x{:x}", reg, value);
+                debug!("WriteAck: 0x{:x} 0x{:x}", reg, value);
                 return Ok(());
             } else {
                 error!("no Ready reply");

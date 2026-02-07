@@ -29,7 +29,7 @@ pub trait BkCommonBus {
 
     fn write_reg<R: DeviceRegister>(&mut self, reg: R) -> Result<(), Self::Error> {
         // calls to the log crate should not end up in the firwmare
-        log::info!(
+        log::debug!(
             "write_reg: 0x{:x} 0x{:x} -- {:?}",
             R::get_address(),
             reg.serialize(),
@@ -40,7 +40,7 @@ pub trait BkCommonBus {
     fn read_reg<R: DeviceRegister>(&mut self) -> Result<R, Self::Error> {
         let value = self.read_reg_raw(R::ADDRESS)?;
 
-        log::info!("read_reg: 0x{:x} -- {:?}", R::get_address(), value);
+        log::debug!("read_reg: 0x{:x} -- {:?}", R::get_address(), value);
 
         Ok(R::deserialize(value))
     }

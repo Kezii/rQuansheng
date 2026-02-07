@@ -1,6 +1,5 @@
 use core::cmp::min;
 
-use cortex_m::asm;
 use embedded_hal::delay::DelayNs;
 
 /// Simple busy-wait delay based on core clock.
@@ -20,7 +19,16 @@ impl CycleDelay {
     #[inline(always)]
     fn delay_cycles(&mut self, cycles: u32) {
         // cortex-m busy loop; `0` is fine.
-        asm::delay(cycles);
+        #[cfg(target_arch = "arm")]
+        {
+            cortex_m::asm::delay(cycles);
+        }
+        #[cfg(not(target_arch = "arm"))]
+        {
+            for _ in 0..cycles {
+                core::hint::spin_loop();
+            }
+        }
     }
 }
 

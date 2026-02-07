@@ -12,7 +12,7 @@ use crate::bk1080::Bk1080;
 use crate::bk4819::{AfOutSel, Bk4819Driver, FilterBandwidth, GpioPin, RogerMode};
 use crate::bk_common::BkCommonBus;
 use crate::dialer::Dialer;
-use crate::display::VuMeter;
+use crate::display::{SpectrumWidget, VuMeter};
 use crate::frequencies::{calculate_output_power_setting, FrequencyBand};
 use crate::keyboard::{KeyEvent, QuanshengKey};
 use crate::radio_platform::RadioPlatform;
@@ -200,6 +200,8 @@ impl Events {
 pub enum Screen {
     RadioState,
     Splash,
+    Spectrum,
+    Message(&'static str),
 }
 
 pub struct Slevel {
@@ -224,10 +226,12 @@ where
     pub audio_on: bool,
     pub dialer: Dialer<8>,
     pub should_update_display: bool,
+    pub active_screen: Screen,
     pub alt_function: bool,
     pub backlight_on: bool,
     pub am_fix: AmFix,
     pub vu_meter: VuMeter,
+    pub spectrum_widget: SpectrumWidget,
     /// this is just a cache for eeprom values
     pub s_levels: SLevelConfig,
     pub battery_calibration: [u16; 6],
@@ -254,10 +258,12 @@ where
             audio_on: false,
             dialer: Dialer::default(),
             should_update_display: false,
+            active_screen: Screen::RadioState,
             alt_function: false,
             backlight_on: true,
             am_fix: AmFix::default(),
             vu_meter: VuMeter::new(),
+            spectrum_widget: SpectrumWidget::new(),
             s_levels: SLevelConfig::default(),
             battery_calibration: [1900, 2000, 1900, 1900, 1900, 2300],
             battery_type: 0,
@@ -388,6 +394,14 @@ where
 
         if self.alt_function {
             match event {
+                KeyEvent::KeyPressed(QuanshengKey::Num5) => {
+                    self.active_screen = match self.active_screen {
+                        Screen::Spectrum => Screen::RadioState,
+                        _ => Screen::Spectrum,
+                    };
+                    self.should_update_display = true;
+                    self.alt_function = false;
+                }
                 KeyEvent::KeyPressed(QuanshengKey::Num6) => {
                     self.channel_cfg.output_power = self.channel_cfg.output_power.next();
                     self.alt_function = false;
@@ -484,13 +498,20 @@ where
         should_update
     }
 
-    pub fn render_display(&mut self, screen: Screen) -> Result<(), BUS::Error> {
+    pub fn render_display(&mut self) -> Result<(), BUS::Error> {
+        let screen = self.active_screen;
         match screen {
             Screen::RadioState => {
                 let _ = self.render_main();
             }
             Screen::Splash => {
                 //let _ = self.rendering_mgr.render_splash(display, &[]);
+            }
+            Screen::Spectrum => {
+                let _ = self.render_spectrum();
+            }
+            Screen::Message(message) => {
+                let _ = self.render_message(message);
             }
         }
 

@@ -90,10 +90,12 @@ where
         &mut self.bitbang
     }
 
+    #[deprecated(note = "do NOT use this function, it's for the serial protocol only")]
     pub fn __internal_write_register_raw(&mut self, reg: u8, value: u16) -> Result<(), BUS::Error> {
         self.bitbang.write_reg_raw(reg, value)
     }
 
+    #[deprecated(note = "do NOT use this function, it's for the serial protocol only")]
     pub fn __internal_read_register_raw(&mut self, reg: u8) -> Result<u16, BUS::Error> {
         self.bitbang.read_reg_raw(reg)
     }

@@ -23,6 +23,7 @@ use crate::{
     frequencies::FrequencyBand,
     radio::{ChannelConfig, Mode, Modulation, RadioController, SLevelConfig},
     radio_platform::RadioPlatform,
+    spectrum::{SpectrumRequest, SpectrumSample, SPECTRUM_BINS},
     ui::{FlexText, FontSizes, UiTextLineLayout, UiWidget, UiWidgetType},
 };
 use dp30g030_hal::{
@@ -285,6 +286,50 @@ where
         Ok(())
     }
 
+    pub fn render_spectrum(&mut self) -> Result<(), PLATFORM::Error> {
+        self.platform.clear(BinaryColor::Off)?;
+
+        let center_hz = self.channel_cfg.frequency_hz;
+        let step_hz = (self.channel_cfg.frequency_step_hz * 4).max(1);
+        let half_span = (SPECTRUM_BINS as i64 / 2) * (step_hz as i64);
+        let start_hz = (center_hz as i64 - half_span).max(0) as u32;
+        let end_hz = (center_hz as i64 + half_span) as u32;
+
+        let req = SpectrumRequest {
+            start_freq_hz: start_hz,
+            step_hz,
+            ..SpectrumRequest::default()
+        };
+
+        let mut delay = CycleDelay::new(48_000_000);
+        if let Ok(samples) = self.fetch_spectrum(&req, &mut delay) {
+            self.spectrum_widget
+                .update_and_draw(&mut self.platform, samples.as_slice())?;
+        }
+
+        use core::fmt::Write;
+
+        let mut line = String::<16>::new();
+        let _ = write!(line, "{}", start_hz / 1000);
+        Text::new(
+            line.as_str(),
+            Point::new(0, 6),
+            MonoTextStyle::new(FontSizes::VerySmall.get_font_style(), BinaryColor::On),
+        )
+        .draw(&mut self.platform)?;
+
+        let mut line = String::<16>::new();
+        let _ = write!(line, "{}", end_hz / 1000);
+        Text::new(
+            line.as_str(),
+            Point::new(93, 6),
+            MonoTextStyle::new(FontSizes::VerySmall.get_font_style(), BinaryColor::On),
+        )
+        .draw(&mut self.platform)?;
+
+        Ok(())
+    }
+
     pub fn render_splash<D: DrawTarget<Color = BinaryColor>>(
         &mut self,
         display: &mut D,
@@ -308,6 +353,21 @@ where
         });
         display.draw_iter(pixels)?;
 
+        Ok(())
+    }
+
+    pub fn render_message(&mut self, message: &'static str) -> Result<(), BUS::Error> {
+        use core::fmt::Write;
+        self.platform.clear(BinaryColor::Off).ok();
+        let mut line = String::<16>::new();
+        let _ = write!(line, "{}", message);
+        Text::new(
+            line.as_str(),
+            Point::new(20, 20),
+            MonoTextStyle::new(FontSizes::VerySmall.get_font_style(), BinaryColor::On),
+        )
+        .draw(&mut self.platform)
+        .ok();
         Ok(())
     }
 }
@@ -546,5 +606,59 @@ impl VuMeter {
 
         let scaled = ((rssi_dbm - s0_dbm) as i32 * Self::BAR_WIDTH) / span;
         scaled.clamp(0, Self::BAR_WIDTH)
+    }
+}
+
+pub struct SpectrumWidget;
+
+impl SpectrumWidget {
+    const AREA_X: i32 = 0;
+    const AREA_Y: i32 = 12;
+    const AREA_W: i32 = 128;
+    const AREA_H: i32 = 52;
+
+    pub const fn new() -> Self {
+        Self
+    }
+
+    pub fn update_and_draw<D: DrawTarget<Color = BinaryColor>>(
+        &mut self,
+        display: &mut D,
+        samples: &[SpectrumSample],
+    ) -> Result<(), D::Error> {
+        Rectangle::new(
+            Point::new(Self::AREA_X, Self::AREA_Y),
+            Size::new(Self::AREA_W as u32, Self::AREA_H as u32),
+        )
+        .into_styled(PrimitiveStyle::with_fill(BinaryColor::Off))
+        .draw(display)?;
+
+        let min_rssi = samples.iter().map(|s| s.rssi).min().unwrap_or(0);
+        let max_rssi = samples.iter().map(|s| s.rssi).max().unwrap_or(0);
+
+        let max_x = Self::AREA_W.min(samples.len() as i32);
+        for x in 0..max_x {
+            let rssi = samples[x as usize].rssi;
+            let h = self.rssi_to_height(rssi, min_rssi, max_rssi);
+            if h > 0 {
+                let y = Self::AREA_Y + (Self::AREA_H - h as i32);
+                Rectangle::new(Point::new(Self::AREA_X + x, y), Size::new(1, h))
+                    .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+                    .draw(display)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn rssi_to_height(&self, rssi: u16, min_rssi: u16, max_rssi: u16) -> u32 {
+        let dbm = (rssi as i16 / 2) - 160;
+        let min_dbm = (min_rssi as i16 / 2) - 160;
+        let max_dbm = (max_rssi as i16 / 2) - 160;
+        let clamped = dbm.clamp(min_dbm, max_dbm);
+        let range = (max_dbm - min_dbm) as i32;
+        let v = (clamped - min_dbm) as i32;
+        let h = (v * Self::AREA_H + range / 2) / range;
+        h.max(0) as u32
     }
 }

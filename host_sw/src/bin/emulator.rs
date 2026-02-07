@@ -9,6 +9,7 @@ use embedded_graphics_simulator::{
     sdl2::{Keycode, MouseButton},
 };
 
+use log::LevelFilter;
 use rquansheng::{
     bk1080::Bk1080,
     bk4819::Bk4819Driver,
@@ -23,7 +24,8 @@ use host_sw::{
 };
 
 fn main() -> Result<(), core::convert::Infallible> {
-    env_logger::init();
+    env_logger::Builder::from_default_env().filter_level(LevelFilter::Info).init();
+    log::info!("Starting emulator");
     let mut display = SimulatorDisplay::<BinaryColor>::new(Size::new(128, 64));
     let output_settings = OutputSettingsBuilder::new()
         .theme(BinaryColorTheme::Custom {
@@ -35,7 +37,7 @@ fn main() -> Result<(), core::convert::Infallible> {
     let mut window = Window::new("rQuansheng", &output_settings);
 
     let radio_bus =
-        SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(150)).unwrap();
+        SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(15)).unwrap();
 
     //let radio_bus = DummyRadioBus;
     let mut dummy_delay = host_sw::delay::DummyDelay;
@@ -52,7 +54,7 @@ fn main() -> Result<(), core::convert::Infallible> {
     let mut radio = RadioController::new(Bk4819Driver::new(radio_bus), bk1080, hosted_platform);
 
     'main: loop {
-        radio.render_display(Screen::RadioState).unwrap();
+        radio.render_display().unwrap();
 
         let mut wait = false;
 

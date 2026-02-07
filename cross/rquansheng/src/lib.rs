@@ -24,6 +24,7 @@ pub mod keyboard;
 pub mod messages;
 pub mod radio;
 pub mod radio_platform;
+pub mod spectrum;
 pub mod ui;
 
 use dp32g030 as _;

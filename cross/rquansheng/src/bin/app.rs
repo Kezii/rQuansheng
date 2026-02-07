@@ -59,7 +59,7 @@ mod app {
     use rquansheng::display::DisplayMgr;
     use rquansheng::messages::{decode_line, HostBound, RadioBound};
     use rquansheng::radio::{RadioController, Screen};
-    use rquansheng::radio_platform::{DebounceBool, UVK5RadioPlatform};
+    use rquansheng::radio_platform::{DebounceBool, RadioPlatform, UVK5RadioPlatform};
     use rtic_monotonics::{fugit::ExtU32, Monotonic as _};
     use rtic_sync::signal::{Signal, SignalReader, SignalWriter};
 
@@ -105,6 +105,10 @@ mod app {
             Bk1080BitBangBus<CycleDelay>,
             UVK5RadioPlatform,
         >,
+
+        /// this is used to completely quit the firmware mainloop
+        /// so, if we are using the serial protocol, we don't have impairments
+        fuck_off_from_main_loop: bool,
     }
 
     // Local resources go here
@@ -173,6 +177,7 @@ mod app {
             Shared {
                 // Initialization of shared resources go here
                 radio,
+                fuck_off_from_main_loop: false,
             },
             Local {
                 // Initialization of local resources go here
@@ -193,7 +198,7 @@ mod app {
         }
     }
 
-    #[task(priority = 1, local = [pin_flashlight], shared = [radio])]
+    #[task(priority = 1, local = [pin_flashlight], shared = [radio, fuck_off_from_main_loop])]
     async fn uart_task(mut cx: uart_task::Context) {
         use rquansheng::radio_platform::RadioPlatform;
 
@@ -213,6 +218,9 @@ mod app {
             let message = decode_line::<RadioBound>(&line);
 
             if let Ok(message) = message {
+                // we received a valid command, quit the mainloop to save resources
+                cx.shared.fuck_off_from_main_loop.lock(|f| *f = true);
+
                 cx.local.pin_flashlight.set_high();
 
                 let reply: Option<HostBound> = cx.shared.radio.lock(|r| match message {
@@ -275,13 +283,16 @@ mod app {
         }
     }
 
-    #[task(priority = 1, local = [display_update_reader], shared = [radio])]
+    #[task(priority = 1, local = [display_update_reader], shared = [radio, fuck_off_from_main_loop])]
     async fn display_task(mut cx: display_task::Context) {
         loop {
-            let _ = cx
-                .shared
-                .radio
-                .lock(|r| r.render_display(Screen::RadioState));
+            let _ = cx.shared.radio.lock(|r| r.render_display());
+
+            // if we are receiving serial commands, quit the display task
+            // to save resources
+            if cx.shared.fuck_off_from_main_loop.lock(|f| *f) {
+                break;
+            }
 
             let left = cx.local.display_update_reader.wait();
             let right = Mono::delay(500.millis());
@@ -290,7 +301,7 @@ mod app {
     }
 
     /// 10ms tick task: poll+debounce PTT, poll BK4819 interrupts, and update audio.
-    #[task(priority = 1, shared = [radio], local = [display_update_writer])]
+    #[task(priority = 1, shared = [radio, fuck_off_from_main_loop], local = [display_update_writer])]
     async fn radio_10ms_task(mut cx: radio_10ms_task::Context) {
         // Simple debounce (like C firmware): require 3 consecutive 10ms samples.
 
@@ -312,6 +323,16 @@ mod app {
             }
 
             Mono::delay(10.millis()).await;
+
+            if cx.shared.fuck_off_from_main_loop.lock(|f| *f) {
+                cx.shared.radio.lock(|r| {
+                    r.active_screen = Screen::Message("Serial mode");
+                    r.platform.set_backlight(false);
+                });
+                cx.local.display_update_writer.write(true);
+                Mono::delay(100.millis()).await;
+                break;
+            }
         }
     }
 }

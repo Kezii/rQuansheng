@@ -7,7 +7,7 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 use embedded_graphics_simulator::{SimulatorDisplay, Window};
-use log::info;
+use log::{debug, info};
 use rquansheng::{keyboard::KeyEvent, radio_platform::RadioPlatform};
 
 pub struct HostedPlatform<'a> {
@@ -69,17 +69,22 @@ impl<'a> RadioPlatform for HostedPlatform<'a> {
     }
 
     fn poll_keyboard(&mut self) -> Option<KeyEvent> {
-        info!("poll_keyboard");
-        self.receiver.try_recv().ok()
+        debug!("poll_keyboard");
+        let key = self.receiver.try_recv().ok();
+
+        if let Some(key) = key {
+            info!("poll_keyboard: {:?}", key);
+        }
+        key
     }
 
     fn get_battery_adc(&mut self) -> u16 {
-        info!("get_battery_adc");
+        debug!("get_battery_adc");
         2000
     }
 
     fn flush_display(&mut self) -> Result<(), Self::Error> {
-        info!("flush_display");
+        debug!("flush_display");
         self.window.update(&self.display);
         Ok(())
     }
