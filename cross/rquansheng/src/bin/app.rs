@@ -120,7 +120,7 @@ mod app {
 
     #[init(local = [poke_display_update: Signal<bool> = Signal::new()])]
     fn init(cx: init::Context) -> (Shared, Local) {
-        let serial_logs = true;
+        let serial_logs = false;
 
         if serial_logs {
             let uart1 = get_uart();
