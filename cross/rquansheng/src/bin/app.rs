@@ -120,7 +120,7 @@ mod app {
 
     #[init(local = [poke_display_update: Signal<bool> = Signal::new()])]
     fn init(cx: init::Context) -> (Shared, Local) {
-        let serial_logs = false;
+        let serial_logs = true;
 
         if serial_logs {
             let uart1 = get_uart();
@@ -342,3 +342,36 @@ mod app {
         }
     }
 }
+
+// the following works but consumes about 10k of flash...
+/*
+use core::panic::PanicInfo;
+
+#[panic_handler]
+fn panic(info: &PanicInfo) -> ! {
+    //defmt::error!("Panic: {:?}", info);
+
+    let mut buf = heapless::String::<128>::new();
+
+    use core::fmt::Write;
+
+    if let Some(location) = info.location() {
+        write!(buf, "{}:{} {:?}", location.file(), location.line(), info.message()).ok();
+    } else {
+        write!(buf, "Unknown panic: {:?}", info.message()).ok();
+    }
+
+    write!(buf, "{}:{} {:?}", info.location().unwrap().file(), info.location().unwrap().line(), info.message()).ok();
+
+    let p = unsafe { dp32g030::Peripherals::steal() };
+
+    let mut display = rquansheng::display::DisplayMgr::new(p.SPI0, &p.SYSCON, &p.PORTCON);
+
+
+    display.show_raw_message(buf.as_str());
+
+    loop {
+        continue;
+    }
+}
+*/

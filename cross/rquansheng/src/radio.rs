@@ -157,6 +157,8 @@ pub struct ChannelConfig {
     pub output_power: OutputPower,
 
     pub squelch_level: SquelchLevel,
+    /// If true, use more sensitive squelch thresholds (C `ENABLE_SQUELCH_MORE_SENSITIVE`).
+    pub squelch_more_sensitive: bool,
 
     pub frequency_step_hz: u32,
 
@@ -175,6 +177,7 @@ impl Default for ChannelConfig {
             modulation: Modulation::FM,
             output_power: OutputPower::Off,
             squelch_level: SquelchLevel::Squelch1,
+            squelch_more_sensitive: true,
             frequency_step_hz: 2500,
             frequency_offset_hz: 0,
         }
@@ -682,20 +685,37 @@ where
             Some(b[0])
         };
 
-        let open_rssi = read_u8(base)?;
-        let close_rssi = read_u8(base + 0x10)?;
-        let open_noise = read_u8(base + 0x20)?.min(127);
-        let close_noise = read_u8(base + 0x30)?.min(127);
-        let close_glitch = read_u8(base + 0x40)?;
-        let open_glitch = read_u8(base + 0x50)?;
+        let mut open_rssi = u16::from(read_u8(base)?);
+        let mut close_rssi = u16::from(read_u8(base + 0x10)?);
+        let mut open_noise = u16::from(read_u8(base + 0x20)?).min(127);
+        let mut close_noise = u16::from(read_u8(base + 0x30)?).min(127);
+        let mut close_glitch = u16::from(read_u8(base + 0x40)?);
+        let mut open_glitch = u16::from(read_u8(base + 0x50)?);
+
+        if self.channel_cfg.squelch_more_sensitive {
+            // Port of the C `ENABLE_SQUELCH_MORE_SENSITIVE` block.
+            open_rssi = (open_rssi * 1) / 2;
+            open_noise = (open_noise * 2) / 1;
+            open_glitch = (open_glitch * 2) / 1;
+
+            if close_rssi == open_rssi && close_rssi >= 2 {
+                close_rssi -= 2;
+            }
+            if close_noise == open_noise && close_noise <= 125 {
+                close_noise += 2;
+            }
+            if close_glitch == open_glitch && close_glitch <= 253 {
+                close_glitch += 2;
+            }
+        }
 
         Some(SquelchThresholds {
-            open_rssi,
-            close_rssi,
-            open_noise,
-            close_noise,
-            close_glitch,
-            open_glitch,
+            open_rssi: open_rssi.min(255) as u8,
+            close_rssi: close_rssi.min(255) as u8,
+            open_noise: open_noise.min(127) as u8,
+            close_noise: close_noise.min(127) as u8,
+            close_glitch: close_glitch.min(255) as u8,
+            open_glitch: open_glitch.min(255) as u8,
         })
     }
 

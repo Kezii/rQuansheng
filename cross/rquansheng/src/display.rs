@@ -63,7 +63,7 @@ type Display = ST7565<
     8,
 >;
 
-static PAGE_BUFFER: StaticCell<GraphicsPageBuffer<128, 8>> = StaticCell::new();
+static mut PAGE_BUFFER: GraphicsPageBuffer<128, 8> = GraphicsPageBuffer::new();
 
 pub struct DisplayMgr {
     pub display: Display,
@@ -106,8 +106,7 @@ impl DisplayMgr {
         let disp_spidevice = ExclusiveDevice::new_no_delay(spi0, pin_lcd_cs).unwrap();
         let disp_interface = SPIInterface::new(disp_spidevice, pin_lcd_a0);
 
-        let page_buffer: &mut GraphicsPageBuffer<128, 8> =
-            PAGE_BUFFER.init(GraphicsPageBuffer::new());
+        let page_buffer: &mut GraphicsPageBuffer<128, 8> = unsafe { &mut PAGE_BUFFER };
         let mut display: Display =
             ST7565::new(disp_interface, FG12864390_FKFW).into_graphics_mode(page_buffer);
 
@@ -116,6 +115,27 @@ impl DisplayMgr {
         display.flush().unwrap();
 
         Self { display }
+    }
+
+    pub fn show_raw_message(&mut self, message: &str) {
+        self.display.clear(BinaryColor::Off).ok();
+        let font = FontSizes::VerySmall.get_font_style();
+
+        // divide message in lines, composed by a fixed number of characters
+
+        let nlines = message.len() / 16;
+        for i in 0..nlines {
+            let line = &message[i * 16..(i + 1) * 16];
+            Text::new(
+                line,
+                Point::new(0, 10 + i as i32 * 10),
+                MonoTextStyle::new(font, BinaryColor::On),
+            )
+            .draw(&mut self.display)
+            .ok();
+        }
+
+        self.display.flush().ok();
     }
 }
 

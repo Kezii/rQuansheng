@@ -1353,9 +1353,9 @@ pub struct Reg4E {
 #[address(0x4F)]
 pub struct Reg4F {
     /// Ex-noise threshold for Squelch=1.
-    #[bits(6)]
+    #[bits(7)]
     pub exnoise_th1: u8,
-    #[bits(2)]
+    #[bits(1)]
     undocumented_0: u8,
     /// Ex-noise threshold for Squelch=0.
     #[bits(7)]
