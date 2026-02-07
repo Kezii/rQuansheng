@@ -1,7 +1,8 @@
 use core::convert::Infallible;
 
+use dp30g030_hal::adc;
 use dp30g030_hal::gpio::{Input, Output, Pin, Port};
-use dp32g030::{PORTCON, SPI0, SYSCON};
+use dp32g030::{PORTCON, SARADC, SPI0, SYSCON};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::primitives::Rectangle;
 use embedded_graphics::Pixel;
@@ -23,7 +24,9 @@ pub trait RadioPlatform: DrawTarget<Color = BinaryColor, Error = Infallible> {
     fn set_backlight(&mut self, on: bool);
     fn set_flashlight(&mut self, on: bool);
     fn set_audio_path(&mut self, on: bool);
-    fn bk1080_enabled(&mut self, enabled: bool);
+    fn set_bk1080(&mut self, on: bool);
+
+    fn get_battery_adc(&mut self) -> u16;
 
     fn poll_keyboard(&mut self) -> Option<KeyEvent>;
 
@@ -39,10 +42,11 @@ pub struct UVK5RadioPlatform {
     ptt_debouncer: DebounceBool,
     keyboard_state: KeyboardState,
     display: DisplayMgr,
+    adc: adc::Adc,
 }
 
 impl UVK5RadioPlatform {
-    pub fn new(spi0: SPI0, syscon: &SYSCON, portcon: &PORTCON) -> Self {
+    pub fn new(spi0: SPI0, saradc: SARADC, syscon: &SYSCON, portcon: &PORTCON) -> Self {
         let pin_flashlight = Pin::new(Port::C, 3).into_push_pull_output(syscon, portcon);
         let pin_backlight = Pin::new(Port::B, 6).into_push_pull_output(syscon, portcon);
         let pin_audio_path = Pin::new(Port::C, 4).into_push_pull_output(syscon, portcon);
@@ -50,6 +54,16 @@ impl UVK5RadioPlatform {
         let pin_ptt = get_ptt_pin();
         let ptt_debouncer = DebounceBool::new(3);
         let display = DisplayMgr::new(spi0, syscon, portcon);
+
+        // SARADC: battery voltage is on SARADC CH4, pin PA9.
+        // C firmware conversion: v_10mV = raw * 760 / gBatteryCalibration[3].
+        // We do not use EEPROM calibration here; keep a default in the middle
+        // of the allowed calibration range (MENU_BATCAL is 1600..2200).
+        let vbat_pin = adc::Ch4Pin::new(Pin::new(Port::A, 9)).unwrap();
+        let mut adc_cfg = adc::Config::battery_default();
+        adc_cfg.channel_mask = 1u16 << (adc::Channel::Ch4 as u8);
+        let adc = adc::Adc::new(saradc, syscon, portcon, Some(vbat_pin), None, adc_cfg).unwrap();
+
         Self {
             pin_flashlight,
             pin_backlight,
@@ -59,6 +73,7 @@ impl UVK5RadioPlatform {
             ptt_debouncer,
             keyboard_state: KeyboardState::default(),
             display,
+            adc,
         }
     }
 }
@@ -120,12 +135,16 @@ impl RadioPlatform for UVK5RadioPlatform {
         }
     }
 
-    fn bk1080_enabled(&mut self, enabled: bool) {
+    fn set_bk1080(&mut self, enabled: bool) {
         if enabled {
             let _ = embedded_hal::digital::OutputPin::set_low(&mut self.pin_bk1080_enable);
         } else {
             let _ = embedded_hal::digital::OutputPin::set_high(&mut self.pin_bk1080_enable);
         }
+    }
+
+    fn get_battery_adc(&mut self) -> u16 {
+        self.adc.read_blocking(adc::Channel::Ch4).unwrap_or(0)
     }
 
     fn poll_keyboard(&mut self) -> Option<KeyEvent> {

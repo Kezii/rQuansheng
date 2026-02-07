@@ -110,7 +110,6 @@ mod app {
     // Local resources go here
     #[local]
     struct Local {
-        adc: adc::Adc,
         display_update_reader: SignalReader<'static, bool>,
         display_update_writer: SignalWriter<'static, bool>,
         pin_flashlight: Pin<Output>,
@@ -144,31 +143,18 @@ mod app {
         let bus = Bk4819BitBang::new(scn, scl, sda, delay_bb);
         let bk = Bk4819Driver::new(bus);
 
-        let platform =
-            UVK5RadioPlatform::new(cx.device.SPI0, &cx.device.SYSCON, &cx.device.PORTCON);
+        let platform = UVK5RadioPlatform::new(
+            cx.device.SPI0,
+            cx.device.SARADC,
+            &cx.device.SYSCON,
+            &cx.device.PORTCON,
+        );
 
         let delay_bb_1080 = CycleDelay::new(48_000_000);
         let bus_1080 = Bk1080BitBangBus::uvk5_shared(delay_bb_1080);
         let bk1080 = Bk1080::new(bus_1080);
 
         let mut radio = RadioController::new(bk, bk1080, platform);
-
-        // SARADC: battery voltage is on SARADC CH4, pin PA9.
-        // C firmware conversion: v_10mV = raw * 760 / gBatteryCalibration[3].
-        // We do not use EEPROM calibration here; keep a default in the middle
-        // of the allowed calibration range (MENU_BATCAL is 1600..2200).
-        let vbat_pin = adc::Ch4Pin::new(Pin::new(Port::A, 9)).unwrap();
-        let mut adc_cfg = adc::Config::battery_default();
-        adc_cfg.channel_mask = 1u16 << (adc::Channel::Ch4 as u8);
-        let adc = adc::Adc::new(
-            cx.device.SARADC,
-            &cx.device.SYSCON,
-            &cx.device.PORTCON,
-            Some(vbat_pin),
-            None,
-            adc_cfg,
-        )
-        .unwrap();
 
         let (display_update_writer, display_update_reader) = cx.local.poke_display_update.split();
 
@@ -190,7 +176,6 @@ mod app {
             },
             Local {
                 // Initialization of local resources go here
-                adc,
                 display_update_reader,
                 display_update_writer,
                 pin_flashlight,
@@ -287,18 +272,6 @@ mod app {
             } else {
                 Mono::delay(10.millis()).await;
             }
-        }
-    }
-
-    // UART demo task: writes a message periodically on UART1.
-    #[task(priority = 1, local = [adc])]
-    async fn adc_task(cx: adc_task::Context) {
-        loop {
-            let raw = cx.local.adc.read_blocking(adc::Channel::Ch4).unwrap_or(0);
-
-            defmt::info!("battery: (raw={=u16})", raw);
-
-            Mono::delay(2.secs()).await;
         }
     }
 

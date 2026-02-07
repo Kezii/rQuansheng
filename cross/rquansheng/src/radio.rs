@@ -230,6 +230,8 @@ where
     pub vu_meter: VuMeter,
     /// this is just a cache for eeprom values
     pub s_levels: SLevelConfig,
+    pub battery_calibration: [u16; 6],
+    pub battery_type: u8,
 }
 
 impl<BUS, BUS1080, PLATFORM> RadioController<BUS, BUS1080, PLATFORM>
@@ -257,9 +259,12 @@ where
             am_fix: AmFix::default(),
             vu_meter: VuMeter::new(),
             s_levels: SLevelConfig::default(),
+            battery_calibration: [1900, 2000, 1900, 1900, 1900, 2300],
+            battery_type: 0,
         };
 
         radio.s_levels = radio.read_s_levels_from_eeprom();
+        radio.refresh_battery_settings_from_eeprom();
 
         radio
     }
@@ -315,10 +320,10 @@ where
 
     /// for now as a demo
     fn _enable_wfm_rx(&mut self) -> Result<(), BUS::Error> {
-        self.platform.bk1080_enabled(true);
+        self.platform.set_bk1080(true);
         self.platform.set_audio_path(true);
         self.mode = Mode::WfmRx;
-        let mut delay = crate::delay::CycleDelay::new(48_000_000);
+        let mut delay: crate::delay::CycleDelay = crate::delay::CycleDelay::new(48_000_000);
         let _ = self.bk1080.init(&mut delay, Some(1065));
         let _ = self.bk1080.mute(false);
         Ok(())
@@ -402,6 +407,74 @@ where
                 log::info!("dialed frequency: {}", self.channel_cfg.frequency_hz);
                 let _ = self.enter_rx();
             }
+        }
+    }
+
+    pub fn get_battery_percentage(&mut self) -> u16 {
+        // Port of `BATTERY_VoltsToPercent` from the stock/custom firmware.
+        let raw = self.platform.get_battery_adc() as u32;
+        let calibration = self.battery_calibration[3].clamp(1600, 2200) as u32;
+        let voltage_10mv = (raw * 760) / calibration;
+
+        const VOLTAGE_TO_PERCENT_1600: &[(u16, u16)] = &[
+            (828, 100),
+            (814, 97),
+            (760, 25),
+            (729, 6),
+            (630, 0),
+            (0, 0),
+            (0, 0),
+        ];
+        const VOLTAGE_TO_PERCENT_2200: &[(u16, u16)] = &[
+            (832, 100),
+            (813, 95),
+            (740, 60),
+            (707, 21),
+            (682, 5),
+            (630, 0),
+            (0, 0),
+        ];
+
+        let table = match self.battery_type {
+            1 => VOLTAGE_TO_PERCENT_2200,
+            _ => VOLTAGE_TO_PERCENT_1600,
+        };
+
+        let mulipl: i32 = 1000;
+        let voltage = voltage_10mv as i32;
+        for i in 1..table.len() {
+            let (v_i, p_i) = (table[i].0 as i32, table[i].1 as i32);
+            let (v_prev, p_prev) = (table[i - 1].0 as i32, table[i - 1].1 as i32);
+            if voltage > v_i {
+                let a = (p_prev - p_i) * mulipl / (v_prev - v_i);
+                let b = p_i - a * v_i / mulipl;
+                let p = a * voltage / mulipl + b;
+                return p.clamp(0, 100) as u16;
+            }
+        }
+
+        0
+    }
+
+    pub fn refresh_battery_settings_from_eeprom(&mut self) {
+        let mut data = [0u8; 12];
+        if self.platform.eeprom_read(0x1F40, &mut data).is_ok() {
+            for i in 0..self.battery_calibration.len() {
+                let start = i * 2;
+                self.battery_calibration[i] = u16::from_le_bytes([data[start], data[start + 1]]);
+            }
+
+            if self.battery_calibration[0] >= 5000 {
+                self.battery_calibration[0] = 1900;
+                self.battery_calibration[1] = 2000;
+            }
+            self.battery_calibration[5] = 2300;
+        }
+
+        let mut data = [0u8; 8];
+        if self.platform.eeprom_read(0x0EA8, &mut data).is_ok() {
+            let battery_type = data[4];
+            self.battery_type = if battery_type < 2 { battery_type } else { 0 };
         }
     }
 

@@ -64,13 +64,18 @@ impl<'a> RadioPlatform for HostedPlatform<'a> {
         info!("set_audio_path: {}", on);
     }
 
-    fn bk1080_enabled(&mut self, enabled: bool) {
+    fn set_bk1080(&mut self, enabled: bool) {
         info!("bk1080_enabled: {}", enabled);
     }
 
     fn poll_keyboard(&mut self) -> Option<KeyEvent> {
         info!("poll_keyboard");
         self.receiver.try_recv().ok()
+    }
+
+    fn get_battery_adc(&mut self) -> u16 {
+        info!("get_battery_adc");
+        2000
     }
 
     fn flush_display(&mut self) -> Result<(), Self::Error> {

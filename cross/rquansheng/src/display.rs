@@ -156,23 +156,6 @@ where
 
         use core::fmt::Write;
 
-        let verysmallfont = MonoTextStyle::new(
-            &embedded_graphics::mono_font::ascii::FONT_6X12,
-            BinaryColor::On,
-        );
-
-        let verysmallfont_inv = MonoTextStyle::new(
-            &embedded_graphics::mono_font::ascii::FONT_6X12,
-            BinaryColor::Off,
-        );
-
-        let font_10_digits =
-            MonoTextStyle::new(&crate::fonts_generated::PROFONT_10_POINT, BinaryColor::On);
-        let font_14_digits =
-            MonoTextStyle::new(&crate::fonts_generated::PROFONT_14_POINT, BinaryColor::On);
-        let font_24_digits =
-            MonoTextStyle::new(&crate::fonts_generated::PROFONT_24_POINT, BinaryColor::On);
-
         {
             let mut main_frequency = String::<8>::new();
             if self.dialer.is_dialing() {
@@ -191,12 +174,16 @@ where
             } else {
                 ""
             };
-            Text::new(f6, Point::new(7, main_frequency_y), font_24_digits)
-                .draw(&mut self.platform)?;
+            Text::new(
+                f6,
+                Point::new(7, main_frequency_y),
+                MonoTextStyle::new(FontSizes::LargeNumbers.get_font_style(), BinaryColor::On),
+            )
+            .draw(&mut self.platform)?;
             Text::new(
                 l2,
                 Point::new(7 + 6 * 16, main_frequency_y - 1),
-                font_14_digits,
+                MonoTextStyle::new(FontSizes::MidNumbers.get_font_style(), BinaryColor::On),
             )
             .draw(&mut self.platform)?;
             Rectangle::new(
@@ -208,7 +195,12 @@ where
         }
 
         if self.alt_function {
-            Text::new("F", Point::new(1, 7), verysmallfont).draw(&mut self.platform)?;
+            Text::new(
+                "F",
+                Point::new(1, 7),
+                MonoTextStyle::new(FontSizes::VerySmall.get_font_style(), BinaryColor::On),
+            )
+            .draw(&mut self.platform)?;
         }
 
         let slevel = self.get_s_level();
@@ -266,7 +258,7 @@ where
 
         // header row
         {
-            let battery = 100; // stub
+            let battery = self.get_battery_percentage();
             let gains = self.bk.get_gain().unwrap_or_default();
 
             let line = [
