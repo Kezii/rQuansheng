@@ -59,10 +59,17 @@ pub struct GainSnapshot {
     pub current: Gains,
 }
 
+/// Port of `scale_freq()` from the C firmware.
+pub fn scale_freq(freq_hz: u16) -> u16 {
+    // C:
+    // (((freq * 1353245) + (1 << 16)) >> 17)
+    ((((freq_hz as u32) * 1_353_245u32) + (1u32 << 16)) >> 17) as u16
+}
+
 /// High-level driver, owning a `Bk4819` instance plus a small amount of state
 /// that was global in the C implementation (GPIO out shadow + rx idle flag).
 pub struct Bk4819Driver<BUS> {
-    bitbang: BUS,
+    pub bitbang: BUS,
     gpio_out_state: Reg33,
     /// If true, radio is considered asleep/not listening (C global `gRxIdleMode`).
     pub rx_idle_mode: bool,
@@ -98,14 +105,6 @@ where
     #[deprecated(note = "do NOT use this function, it's for the serial protocol only")]
     pub fn __internal_read_register_raw(&mut self, reg: u8) -> Result<u16, BUS::Error> {
         self.bitbang.read_reg_raw(reg)
-    }
-
-    /// Port of `scale_freq()` from the C firmware.
-    #[inline]
-    pub fn scale_freq(freq_hz: u16) -> u16 {
-        // C:
-        // (((freq * 1353245) + (1 << 16)) >> 17)
-        ((((freq_hz as u32) * 1_353_245u32) + (1u32 << 16)) >> 17) as u16
     }
 
     // --- Core init / AGC ----------------------------------------------------
@@ -514,7 +513,7 @@ where
                 .with_tx_dsp_en(true),
         )?;
         self.bitbang
-            .write_reg(Reg71::new().with_word(Self::scale_freq(frequency_hz)))?;
+            .write_reg(Reg71::new().with_word(scale_freq(frequency_hz)))?;
         Ok(())
     }
 
@@ -543,7 +542,7 @@ where
         delay.delay_ms(50);
 
         self.bitbang
-            .write_reg(Reg71::new().with_word(Self::scale_freq(tone_hz as u16)))?;
+            .write_reg(Reg71::new().with_word(scale_freq(tone_hz as u16)))?;
         self.exit_tx_mute()?;
 
         delay.delay_ms(delay_ms);
@@ -570,7 +569,7 @@ where
         self.bitbang
             .write_reg(Reg70::new().with_tone1_en(true).with_tone1_gain(66))?;
         self.bitbang
-            .write_reg(Reg71::new().with_word(Self::scale_freq(frequency_hz as u16)))?;
+            .write_reg(Reg71::new().with_word(scale_freq(frequency_hz as u16)))?;
         self.set_af(if local_loopback {
             AfOutSel::BeepTx
         } else {
@@ -854,15 +853,17 @@ where
         delay.delay_ms(10);
 
         self.bitbang
-            .write_reg(Reg71::new().with_word(Self::scale_freq(tone1_hz as u16)))?;
+            .write_reg(Reg71::new().with_word(scale_freq(tone1_hz as u16)))?;
         self.exit_tx_mute()?;
         delay.delay_ms(20);
         self.enter_tx_mute()?;
+
         self.bitbang
-            .write_reg(Reg71::new().with_word(Self::scale_freq(tone2_hz as u16)))?;
+            .write_reg(Reg71::new().with_word(scale_freq(tone2_hz as u16)))?;
         self.exit_tx_mute()?;
         delay.delay_ms(20);
         self.enter_tx_mute()?;
+
         self.disable_tones()?;
         self.bitbang.write_reg(Reg30::from(0xC1FE))?;
         Ok(())

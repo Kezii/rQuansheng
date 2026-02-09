@@ -24,7 +24,9 @@ use host_sw::{
 };
 
 fn main() -> Result<(), core::convert::Infallible> {
-    env_logger::Builder::from_default_env().filter_level(LevelFilter::Info).init();
+    env_logger::Builder::from_default_env()
+        .filter_level(LevelFilter::Info)
+        .init();
     log::info!("Starting emulator");
     let mut display = SimulatorDisplay::<BinaryColor>::new(Size::new(128, 64));
     let output_settings = OutputSettingsBuilder::new()
@@ -40,7 +42,7 @@ fn main() -> Result<(), core::convert::Infallible> {
         SerialProtocolRadioBus::open("/dev/ttyUSB0", 38400, Duration::from_millis(15)).unwrap();
 
     //let radio_bus = DummyRadioBus;
-    let mut dummy_delay = host_sw::delay::DummyDelay;
+    let mut dummy_delay = host_sw::delay::StdThreadDelay;
 
     let (tx, rx) = std::sync::mpsc::channel();
 

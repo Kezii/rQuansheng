@@ -13,3 +13,4 @@ log = "0.4.29"
 image = "0.25"
 rquansheng = {path = "../cross/rquansheng"}
 serialport = { version = "4.8.1", default-features = false }
+midly = "0.4"

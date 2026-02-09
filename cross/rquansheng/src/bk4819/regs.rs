@@ -1674,6 +1674,7 @@ pub struct Reg71 {
 }
 
 /// REG_72: TONE2/FSK frequency control word.
+#[address(0x72)]
 #[bitfield(u16)]
 pub struct Reg72 {
     /// Frequency control word.
@@ -1784,6 +1785,3 @@ pub struct Reg7E {
     /// AGC Fix Mode. 1=Fix;0=Auto.
     pub agc_fix_mode: bool,
 }
-
-/// Compatibility alias for the initial WIP code in this file.
-pub type Mode = Reg07Mode;
