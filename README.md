@@ -34,7 +34,7 @@ rQuansheng can run on a normal PC, controlling the radio chip on a physical devi
 - [x] pac driver
 - [x] run RTIC
 - [x] hal drivers
-- [ ] adc / battery level
+- [x] adc / battery level
 - [x] bk4819 bitbang driver
 - [x] bk4819 hal and library
 - [x] bk1080 driver
