@@ -26,6 +26,14 @@ jobs:
         run: |
           rustup target add thumbv6m-none-eabi
 
+      - name: Install flip-link
+        run: |
+          cargo +nightly install flip-link
+
+      - name: Install cargo-binutils
+        run: |
+          cargo +nightly install cargo-binutils
+
       - name: Cache Dependencies
         uses: Swatinem/rust-cache@v2
 
@@ -34,7 +42,14 @@ jobs:
         run: |
           cargo check
 
-      - name: Cargo check (cross/rquansheng)
+      - name: Build flashable firmware binary
         working-directory: cross/rquansheng
         run: |
-          cargo check
+          cargo build --release --bin app
+          cargo objcopy --release --bin app -- -O binary firmware.bin
+
+      - name: Upload flashable firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-bin
+          path: cross/rquansheng/firmware.bin
